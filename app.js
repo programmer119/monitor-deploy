@@ -119,10 +119,17 @@ function bindRows(){
   $$('.delete-target').forEach(b=>b.onclick=async e=>{e.stopPropagation();if(!confirm('이 체크 항목을 삭제할까요?'))return;try{await api(`/api/targets/${b.dataset.target}`,{method:'DELETE'});toast('삭제했습니다.');refresh()}catch(err){toast(err.message)}});
 }
 
+function fillInfraForm(form,x={}){form.infra_proxy_web.value=x.proxy_web||'';form.infra_app_server.value=x.app_server||'';form.infra_tls.value=x.tls||'';form.infra_edge.value=x.edge||'';}
+async function detectProjectInfrastructure(projectId,{quiet=false}={}){
+  if(!projectId)return;const form=$('#projectForm'),btn=$('#detectInfraBtn'),status=$('#infraDetectStatus');
+  btn.disabled=true;btn.textContent='확인 중';status.textContent='123 런타임 · DNS · HTTP 응답 확인 중…';
+  try{const r=await api(`/api/projects/${projectId}/detect-infrastructure`,{method:'POST'});const p=snapshot.projects.find(x=>x.id===projectId);if(p)p.infrastructure=r.infrastructure||{};if(form.project_id.value===projectId)fillInfraForm(form,r.infrastructure||{});const evidence=(r.evidence||[]).join(' · ');status.textContent=evidence||'확정 가능한 인프라 증거를 찾지 못했습니다.';if(!quiet)toast(r.changed?'실제 환경 기준으로 갱신했습니다.':'현재 확인값과 동일합니다.');}
+  catch(err){status.textContent=err.message;if(!quiet)toast(err.message)}finally{btn.disabled=false;btn.textContent='실제 환경 자동 확인';}
+}
 function openProjectDialog(projectId=''){
-  const form=$('#projectForm');form.reset();form.project_id.value=projectId;$('#projectDialogTitle').textContent=projectId?'프로젝트 정보':'프로젝트 추가';
-  if(projectId){const p=snapshot.projects.find(x=>x.id===projectId);if(p){form.name.value=p.name||'';form.category.value=p.category||'운영';form.kind.value=p.kind||'';form.public_url.value=p.public_url||'';form.notes.value=p.notes||'';const x=p.infrastructure||{};form.infra_proxy_web.value=x.proxy_web||'';form.infra_app_server.value=x.app_server||'';form.infra_tls.value=x.tls||'';form.infra_edge.value=x.edge||'';}}
-  $('#projectDialog').showModal();
+  const form=$('#projectForm');form.reset();form.project_id.value=projectId;$('#projectDialogTitle').textContent=projectId?'프로젝트 정보':'프로젝트 추가';$('#infraDetectStatus').textContent=projectId?'123 런타임 · DNS · HTTP 응답을 확인합니다.':'프로젝트 저장 후 자동 확인할 수 있습니다.';$('#detectInfraBtn').disabled=!projectId;
+  let shouldDetect=false;if(projectId){const p=snapshot.projects.find(x=>x.id===projectId);if(p){form.name.value=p.name||'';form.category.value=p.category||'운영';form.kind.value=p.kind||'';form.public_url.value=p.public_url||'';form.notes.value=p.notes||'';const x=p.infrastructure||{};fillInfraForm(form,x);shouldDetect=!x.proxy_web||!x.app_server||!x.tls||!x.edge;}}
+  $('#projectDialog').showModal();if(projectId&&shouldDetect)setTimeout(()=>detectProjectInfrastructure(projectId,{quiet:true}),80);
 }
 
 function openTargetDialog(projectId,targetId=''){
@@ -136,6 +143,7 @@ $('#search').addEventListener('input',render);
 $$('.filter').forEach(b=>b.onclick=()=>{$$('.filter').forEach(x=>x.classList.remove('active'));b.classList.add('active');filter=b.dataset.filter;render()});
 $('#addProjectBtn').onclick=()=>openProjectDialog();
 $('#projectForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{const id=f.get('project_id');const current=id?snapshot.projects.find(p=>p.id===id):null;const body={name:f.get('name'),category:f.get('category'),kind:f.get('kind'),public_url:f.get('public_url'),notes:f.get('notes'),monitorable:current?current.monitorable:!!f.get('public_url'),enabled:current?current.enabled:true,infrastructure:{proxy_web:f.get('infra_proxy_web')||'',app_server:f.get('infra_app_server')||'',tls:f.get('infra_tls')||'',edge:f.get('infra_edge')||''}};const p=id?await api(`/api/projects/${id}`,{method:'PUT',body:JSON.stringify(body)}):await api('/api/projects',{method:'POST',body:JSON.stringify(body)});if(!id&&p.public_url){await api(`/api/projects/${p.id}/targets`,{method:'POST',body:JSON.stringify({name:'Public',kind:'http',endpoint:p.public_url,interval_seconds:120,timeout_ms:3000,critical:true,enabled:true})})}$('#projectDialog').close();toast(id?'프로젝트 정보를 수정했습니다.':'프로젝트를 추가했습니다.');refresh()}catch(err){toast(err.message)}});
+$('#detectInfraBtn').addEventListener('click',()=>{const id=$('#projectForm').project_id.value;if(id)detectProjectInfrastructure(id);});
 $('#targetForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);const body={name:f.get('name'),kind:f.get('kind'),endpoint:f.get('endpoint'),interval_seconds:Number(f.get('interval_seconds')),timeout_ms:Number(f.get('timeout_ms')),critical:f.get('critical')==='on',enabled:f.get('enabled')==='on'};try{const id=f.get('target_id');if(id)await api(`/api/targets/${id}`,{method:'PUT',body:JSON.stringify(body)});else await api(`/api/projects/${f.get('project_id')}/targets`,{method:'POST',body:JSON.stringify(body)});$('#targetDialog').close();toast(id?'수정했습니다.':'체크 항목을 추가했습니다.');refresh()}catch(err){toast(err.message)}});
 
 $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();const token=$('#adminTokenInput').value.trim();if(!token)return;adminToken=token;localStorage.setItem(TOKEN_KEY,token);try{await refresh();}catch{}});

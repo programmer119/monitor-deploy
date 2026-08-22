@@ -58,6 +58,7 @@
         <label>App Server<input name="infra_app_server" placeholder="예: Tomcat"></label>
         <label>TLS / 인증서<input name="infra_tls" placeholder="예: Automatic HTTPS, Certbot DNS-01"></label>
         <label>Edge<input name="infra_edge" placeholder="예: Cloudflare, GitHub Pages"></label>
+        <div class="wide infra-detect-row"><button class="button small" type="button" id="detectInfraBtn">실제 환경 자동 확인</button><span id="infraDetectStatus">123 런타임 · DNS · HTTP 응답을 확인합니다.</span></div>
         <label class="wide">메모<textarea name="notes" rows="3" placeholder="추측하지 않고 확인된 정보만 기록"></textarea></label>
       </div>
       <div class="modal-actions"><button class="button" value="cancel">취소</button><button class="button primary" type="submit" value="default">저장</button></div>
