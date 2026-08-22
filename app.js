@@ -24,6 +24,8 @@ function since(v){const d=dateValue(v);if(!d)return '-';let s=Math.max(0,Math.fl
 function countdown(v){const d=dateValue(v);if(!d)return '-';let s=Math.max(0,Math.ceil((d-Date.now())/1000));if(s<60)return `${s}초`;if(s<3600)return `${Math.floor(s/60)}분 ${s%60}초`;return `${Math.floor(s/3600)}시간 ${Math.floor((s%3600)/60)}분`;}
 function statusClass(s){return ['normal','slow','suspect','down'].includes(s)?s:'unknown';}
 function targetKind(k){return ({http:'HTTP',https:'HTTPS',tcp:'TCP',redis:'Redis',memcache:'Memcache',memcached:'Memcache',postgres:'PostgreSQL',mysql:'MySQL',mariadb:'MariaDB',dns:'DNS',tls:'TLS',ssl:'SSL'})[k]||k.toUpperCase();}
+function infraItems(p){const x=p.infrastructure||{};return [['WEB',x.proxy_web,'Proxy / Web'],['APP',x.app_server,'App Server'],['TLS',x.tls,'TLS / Certificate'],['EDGE',x.edge,'Edge / Delivery']].filter(([,v])=>String(v||'').trim());}
+function infraHTML(p){const items=infraItems(p);return items.length?`<div class="infra-badges">${items.map(([key,value,label])=>`<span class="infra-badge" title="${esc(label)}"><b>${key}</b>${esc(value)}</span>`).join('')}</div>`:'';}
 function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2200);}
 
 function showLogin(message=''){
@@ -71,7 +73,7 @@ function render(){summarize();
   const q=$('#search').value.trim().toLowerCase();
   const list=snapshot.projects.filter(p=>{
     const st=projectStatus(p);if(filter!=='all'&&st!==filter)return false;
-    if(!q)return true;return [p.name,p.kind,p.category,p.public_url,p.notes].join(' ').toLowerCase().includes(q);
+    if(!q)return true;return [p.name,p.kind,p.category,p.public_url,p.notes,...infraItems(p).map(([,v])=>v)].join(' ').toLowerCase().includes(q);
   });
   $('#projectList').innerHTML=list.length?list.map(projectHTML).join(''):`<div class="empty">조건에 맞는 프로젝트가 없습니다.</div>`;
   bindRows();
@@ -84,7 +86,7 @@ function projectHTML(p){
   const comps=targets.length?targets.slice(0,5).map(t=>`<span class="component" title="${esc(t.endpoint)}"><i class="dot ${statusClass(t.status)}"></i>${esc(t.name)}${t.response_ms?` <strong>${t.response_ms}ms</strong>`:''}</span>`).join(''):`<span class="component"><i class="dot unknown"></i>체크 항목 없음</span>`;
   return `<article class="project ${expanded.has(p.id)?'open':''}" data-project="${esc(p.id)}">
     <div class="project-main" tabindex="0" role="button" aria-expanded="${expanded.has(p.id)}">
-      <div><div class="project-title-row"><span class="status-dot ${st}"></span><span class="project-name">${esc(p.name)}</span>${p.public_url?`<a class="project-link" href="${esc(p.public_url)}" target="_blank" rel="noreferrer" title="바로 열기">↗</a>`:''}</div><p class="project-kind">${esc(p.category)} · ${esc(p.kind||'구성 미확인')}</p></div>
+      <div><div class="project-title-row"><span class="status-dot ${st}"></span><span class="project-name">${esc(p.name)}</span>${p.public_url?`<a class="project-link" href="${esc(p.public_url)}" target="_blank" rel="noreferrer" title="바로 열기">↗</a>`:''}</div><p class="project-kind">${esc(p.category)} · ${esc(p.kind||'구성 미확인')}</p>${infraHTML(p)}</div>
       <div class="components">${comps}</div>
       <span class="status-pill ${st}">${statusText[st]}</span>
       <div class="timing"><strong>${last?since(last):'확인 전'}</strong><span>${next?`다음 ${countdown(next)}`:'자동 체크 없음'}</span></div>
@@ -104,16 +106,23 @@ function detailsHTML(p){
     <td>${t.next_check_at?countdown(t.next_check_at):'-'}</td>
     <td><div class="target-actions"><button class="button small check-now" data-target="${esc(t.id)}" ${!t.endpoint?'disabled':''}>지금 확인</button><button class="button small edit-target" data-target="${esc(t.id)}">수정</button><button class="button small delete-target" data-target="${esc(t.id)}">삭제</button></div></td>
   </tr>`).join('');
-  return `<div class="detail-head"><div class="detail-meta">${p.public_url?esc(p.public_url):'공개 URL 미확인'}${p.notes?` · ${esc(p.notes)}`:''}</div><button class="button small add-target" data-project="${esc(p.id)}">체크 항목 추가</button></div>
+  return `<div class="detail-head"><div class="detail-meta">${p.public_url?esc(p.public_url):'공개 URL 미확인'}${p.notes?` · ${esc(p.notes)}`:''}</div><div class="detail-actions"><button class="button small edit-project" data-project="${esc(p.id)}">프로젝트 정보</button><button class="button small add-target" data-project="${esc(p.id)}">체크 항목 추가</button></div></div>
   ${rows?`<table class="target-table"><thead><tr><th>항목</th><th>주소</th><th>상태</th><th>응답</th><th>최근</th><th>다음</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="empty">아직 체크 항목이 없습니다. 확인된 주소만 추가하세요.</div>`}`;
 }
 
 function bindRows(){
   $$('.project-main').forEach(el=>{const toggle=e=>{if(e.target.closest('a,button'))return;const id=el.closest('.project').dataset.project;expanded.has(id)?expanded.delete(id):expanded.add(id);render()};el.onclick=toggle;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle(e)}}});
+  $$('.edit-project').forEach(b=>b.onclick=e=>{e.stopPropagation();openProjectDialog(b.dataset.project)});
   $$('.add-target').forEach(b=>b.onclick=e=>{e.stopPropagation();openTargetDialog(b.dataset.project)});
   $$('.check-now').forEach(b=>b.onclick=async e=>{e.stopPropagation();b.disabled=true;b.textContent='확인 중';try{await api(`/api/targets/${b.dataset.target}/check`,{method:'POST'});toast('즉시 확인을 시작했습니다.');setTimeout(refresh,900)}catch(err){toast(err.message)}finally{setTimeout(()=>{b.disabled=false;b.textContent='지금 확인'},1000)}});
   $$('.edit-target').forEach(b=>b.onclick=e=>{e.stopPropagation();openTargetDialog(null,b.dataset.target)});
   $$('.delete-target').forEach(b=>b.onclick=async e=>{e.stopPropagation();if(!confirm('이 체크 항목을 삭제할까요?'))return;try{await api(`/api/targets/${b.dataset.target}`,{method:'DELETE'});toast('삭제했습니다.');refresh()}catch(err){toast(err.message)}});
+}
+
+function openProjectDialog(projectId=''){
+  const form=$('#projectForm');form.reset();form.project_id.value=projectId;$('#projectDialogTitle').textContent=projectId?'프로젝트 정보':'프로젝트 추가';
+  if(projectId){const p=snapshot.projects.find(x=>x.id===projectId);if(p){form.name.value=p.name||'';form.category.value=p.category||'운영';form.kind.value=p.kind||'';form.public_url.value=p.public_url||'';form.notes.value=p.notes||'';const x=p.infrastructure||{};form.infra_proxy_web.value=x.proxy_web||'';form.infra_app_server.value=x.app_server||'';form.infra_tls.value=x.tls||'';form.infra_edge.value=x.edge||'';}}
+  $('#projectDialog').showModal();
 }
 
 function openTargetDialog(projectId,targetId=''){
@@ -125,8 +134,8 @@ function openTargetDialog(projectId,targetId=''){
 
 $('#search').addEventListener('input',render);
 $$('.filter').forEach(b=>b.onclick=()=>{$$('.filter').forEach(x=>x.classList.remove('active'));b.classList.add('active');filter=b.dataset.filter;render()});
-$('#addProjectBtn').onclick=()=>{$('#projectForm').reset();$('#projectDialog').showModal()};
-$('#projectForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{const p=await api('/api/projects',{method:'POST',body:JSON.stringify({name:f.get('name'),category:f.get('category'),kind:f.get('kind'),public_url:f.get('public_url'),notes:f.get('notes'),monitorable:!!f.get('public_url')})});if(p.public_url){await api(`/api/projects/${p.id}/targets`,{method:'POST',body:JSON.stringify({name:'Public',kind:'http',endpoint:p.public_url,interval_seconds:120,timeout_ms:3000,critical:true,enabled:true})})}$('#projectDialog').close();toast('프로젝트를 추가했습니다.');refresh()}catch(err){toast(err.message)}});
+$('#addProjectBtn').onclick=()=>openProjectDialog();
+$('#projectForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{const id=f.get('project_id');const current=id?snapshot.projects.find(p=>p.id===id):null;const body={name:f.get('name'),category:f.get('category'),kind:f.get('kind'),public_url:f.get('public_url'),notes:f.get('notes'),monitorable:current?current.monitorable:!!f.get('public_url'),enabled:current?current.enabled:true,infrastructure:{proxy_web:f.get('infra_proxy_web')||'',app_server:f.get('infra_app_server')||'',tls:f.get('infra_tls')||'',edge:f.get('infra_edge')||''}};const p=id?await api(`/api/projects/${id}`,{method:'PUT',body:JSON.stringify(body)}):await api('/api/projects',{method:'POST',body:JSON.stringify(body)});if(!id&&p.public_url){await api(`/api/projects/${p.id}/targets`,{method:'POST',body:JSON.stringify({name:'Public',kind:'http',endpoint:p.public_url,interval_seconds:120,timeout_ms:3000,critical:true,enabled:true})})}$('#projectDialog').close();toast(id?'프로젝트 정보를 수정했습니다.':'프로젝트를 추가했습니다.');refresh()}catch(err){toast(err.message)}});
 $('#targetForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);const body={name:f.get('name'),kind:f.get('kind'),endpoint:f.get('endpoint'),interval_seconds:Number(f.get('interval_seconds')),timeout_ms:Number(f.get('timeout_ms')),critical:f.get('critical')==='on',enabled:f.get('enabled')==='on'};try{const id=f.get('target_id');if(id)await api(`/api/targets/${id}`,{method:'PUT',body:JSON.stringify(body)});else await api(`/api/projects/${f.get('project_id')}/targets`,{method:'POST',body:JSON.stringify(body)});$('#targetDialog').close();toast(id?'수정했습니다.':'체크 항목을 추가했습니다.');refresh()}catch(err){toast(err.message)}});
 
 $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();const token=$('#adminTokenInput').value.trim();if(!token)return;adminToken=token;localStorage.setItem(TOKEN_KEY,token);try{await refresh();}catch{}});

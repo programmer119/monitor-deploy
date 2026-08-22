@@ -47,12 +47,17 @@
 
   <dialog id="projectDialog" class="modal">
     <form id="projectForm" method="dialog">
-      <div class="modal-head"><div><p class="eyebrow">PROJECT</p><h2>프로젝트 추가</h2></div><button class="icon-button" value="cancel" aria-label="닫기">×</button></div>
+      <input type="hidden" name="project_id">
+      <div class="modal-head"><div><p class="eyebrow">PROJECT</p><h2 id="projectDialogTitle">프로젝트 추가</h2></div><button class="icon-button" value="cancel" aria-label="닫기">×</button></div>
       <div class="form-grid">
         <label>프로젝트명<input name="name" required placeholder="예: New Service"></label>
         <label>구분<select name="category"><option>운영</option><option>데모</option><option>프로토타입</option><option>내부</option><option>종료</option></select></label>
         <label class="wide">설명<input name="kind" placeholder="예: Go API + Svelte Web"></label>
         <label class="wide">공개 URL<input name="public_url" type="url" placeholder="https://..."></label>
+        <label>Proxy / Web<input name="infra_proxy_web" placeholder="예: Caddy, Nginx"></label>
+        <label>App Server<input name="infra_app_server" placeholder="예: Tomcat"></label>
+        <label>TLS / 인증서<input name="infra_tls" placeholder="예: Automatic HTTPS, Certbot DNS-01"></label>
+        <label>Edge<input name="infra_edge" placeholder="예: Cloudflare, GitHub Pages"></label>
         <label class="wide">메모<textarea name="notes" rows="3" placeholder="추측하지 않고 확인된 정보만 기록"></textarea></label>
       </div>
       <div class="modal-actions"><button class="button" value="cancel">취소</button><button class="button primary" type="submit" value="default">저장</button></div>
