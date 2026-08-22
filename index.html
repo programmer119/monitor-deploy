@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SuaveForge Monitor</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">SUAVEFORGE OPERATIONS</p>
+        <h1>서비스 관제</h1>
+        <p class="subtitle">프로젝트와 구성요소의 현재 상태를 한 화면에서 확인합니다.</p>
+      </div>
+      <div class="top-actions">
+        <div class="live-chip"><span class="live-dot"></span><span>자동 갱신</span><strong id="refreshAge">-</strong></div>
+        <button class="button" id="changeKeyBtn">접근키</button><button class="button primary" id="addProjectBtn">프로젝트 추가</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="summary-grid" aria-label="전체 상태 요약">
+        <article class="summary-card summary-main"><span class="summary-label">전체 상태</span><strong id="overallStatus">확인 중</strong><small id="overallDetail">-</small></article>
+        <article class="summary-card"><span class="summary-label">프로젝트</span><strong id="projectCount">0</strong><small>등록된 전체 자산</small></article>
+        <article class="summary-card"><span class="summary-label">체크 항목</span><strong id="targetCount">0</strong><small id="enabledTargetCount">0 활성</small></article>
+        <article class="summary-card"><span class="summary-label">최근 확인</span><strong id="lastCheck">-</strong><small id="nextCheck">다음 확인 -</small></article>
+      </section>
+
+      <section class="workspace">
+        <div class="toolbar">
+          <div class="search-wrap"><label for="search">프로젝트 검색</label><input id="search" type="search" placeholder="이름, 도메인, 기술로 검색"></div>
+          <div class="filters" role="group" aria-label="상태 필터">
+            <button class="filter active" data-filter="all">전체</button>
+            <button class="filter" data-filter="normal">정상</button>
+            <button class="filter" data-filter="degraded">주의</button>
+            <button class="filter" data-filter="down">장애</button>
+            <button class="filter" data-filter="unknown">미확인</button>
+          </div>
+        </div>
+        <div class="legend"><span><i class="dot normal"></i>정상</span><span><i class="dot slow"></i>지연</span><span><i class="dot suspect"></i>재확인</span><span><i class="dot down"></i>장애</span><span><i class="dot unknown"></i>미확인</span></div>
+        <div id="projectList" class="project-list" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="projectDialog" class="modal">
+    <form id="projectForm" method="dialog">
+      <div class="modal-head"><div><p class="eyebrow">PROJECT</p><h2>프로젝트 추가</h2></div><button class="icon-button" value="cancel" aria-label="닫기">×</button></div>
+      <div class="form-grid">
+        <label>프로젝트명<input name="name" required placeholder="예: New Service"></label>
+        <label>구분<select name="category"><option>운영</option><option>데모</option><option>프로토타입</option><option>내부</option><option>종료</option></select></label>
+        <label class="wide">설명<input name="kind" placeholder="예: Go API + Svelte Web"></label>
+        <label class="wide">공개 URL<input name="public_url" type="url" placeholder="https://..."></label>
+        <label class="wide">메모<textarea name="notes" rows="3" placeholder="추측하지 않고 확인된 정보만 기록"></textarea></label>
+      </div>
+      <div class="modal-actions"><button class="button" value="cancel">취소</button><button class="button primary" type="submit" value="default">저장</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="targetDialog" class="modal">
+    <form id="targetForm" method="dialog">
+      <input type="hidden" name="project_id"><input type="hidden" name="target_id">
+      <div class="modal-head"><div><p class="eyebrow">MONITOR</p><h2 id="targetDialogTitle">체크 항목 추가</h2></div><button class="icon-button" value="cancel" aria-label="닫기">×</button></div>
+      <div class="form-grid">
+        <label>표시명<input name="name" required placeholder="예: Backend API"></label>
+        <label>체크 방식<select name="kind"><option value="http">HTTP/HTTPS</option><option value="tcp">TCP Port</option><option value="redis">Redis PING</option><option value="memcache">Memcached</option><option value="postgres">PostgreSQL 연결</option><option value="mysql">MySQL/MariaDB 연결</option><option value="dns">DNS</option><option value="tls">SSL/TLS 인증서</option></select></label>
+        <label class="wide">주소 / 엔드포인트<input name="endpoint" required placeholder="https://service/health 또는 host:port"></label>
+        <label>체크 주기(초)<input name="interval_seconds" type="number" min="30" value="120"></label>
+        <label>Timeout(ms)<input name="timeout_ms" type="number" min="500" max="30000" value="3000"></label>
+        <label class="check-row"><input name="critical" type="checkbox" checked> 장애 시 프로젝트를 장애로 표시</label>
+        <label class="check-row"><input name="enabled" type="checkbox" checked> 자동 체크 활성</label>
+      </div>
+      <div class="modal-actions"><button class="button" value="cancel">취소</button><button class="button primary" type="submit" value="default">저장</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status"></div>
+  <dialog id="loginDialog" class="modal auth-modal">
+    <form id="loginForm">
+      <div class="modal-head"><div><p class="eyebrow">SECURE ACCESS</p><h2>관제 접근키</h2></div></div>
+      <p class="auth-copy">배포 완료 시 생성된 MONITOR 관리자 접근키를 입력합니다.</p>
+      <div class="form-grid"><label class="wide">관리자 접근키<input id="adminTokenInput" name="token" type="password" autocomplete="current-password" required placeholder="MONITOR 관리자 접근키"></label></div>
+      <div class="modal-actions"><button class="button primary" type="submit">관제 열기</button></div>
+      <p id="loginError" class="auth-error" aria-live="polite"></p>
+    </form>
+  </dialog>
+  <script src="./app.js" defer></script>
+</body>
+</html>
