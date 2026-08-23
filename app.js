@@ -24,9 +24,9 @@ function since(v){const d=dateValue(v);if(!d)return '-';let s=Math.max(0,Math.fl
 function countdown(v){const d=dateValue(v);if(!d)return '-';let s=Math.max(0,Math.ceil((d-Date.now())/1000));if(s<60)return `${s}초`;if(s<3600)return `${Math.floor(s/60)}분 ${s%60}초`;return `${Math.floor(s/3600)}시간 ${Math.floor((s%3600)/60)}분`;}
 function statusClass(s){return ['normal','slow','suspect','down'].includes(s)?s:'unknown';}
 function targetKind(k){return ({http:'HTTP',https:'HTTPS',tcp:'TCP',redis:'Redis',memcache:'Memcache',memcached:'Memcache',postgres:'PostgreSQL',mysql:'MySQL',mariadb:'MariaDB',dns:'DNS',tls:'TLS',ssl:'SSL'})[k]||k.toUpperCase();}
-function infraItems(p){const x=p.infrastructure||{};return [['FRONT',x.frontend,'Frontend / Hosting'],['WEB',x.proxy_web,'Proxy / Web'],['APP',x.app_server,'Backend / App'],['DB',x.database,'Database'],['TLS',x.tls,'TLS / Certificate'],['EDGE',x.edge,'Edge / Delivery']].filter(([,v])=>String(v||'').trim());}
+function infraItems(p){const x=p.infrastructure||{};return [['FRONT',x.frontend,'Frontend'],['WEB',x.proxy_web,'Proxy / Web'],['APP',x.app_server,'Backend / App'],['DB',x.database,'Database'],['TLS',x.tls,'TLS / Certificate'],['EDGE',x.edge,'Edge / Hosting']].filter(([,v])=>String(v||'').trim());}
 function stackParts(...values){const out=[];for(const raw of values){for(const part of String(raw||'').split('·')){const v=part.trim();if(v&&!out.some(x=>x.toLowerCase()===v.toLowerCase()))out.push(v)}}return out;}
-function infraGroup(p,key){const x=p.infrastructure||{};if(key==='front')return stackParts(x.frontend,x.edge).join(' · ');if(key==='proxy')return stackParts(x.proxy_web).join(' · ');if(key==='app')return stackParts(x.app_server).join(' · ');if(key==='database')return stackParts(x.database).join(' · ');if(key==='tls')return stackParts(x.tls).join(' · ');return '';}
+function infraGroup(p,key){const x=p.infrastructure||{};if(key==='front')return stackParts(x.frontend).join(' · ');if(key==='proxy')return stackParts(x.proxy_web).join(' · ');if(key==='app')return stackParts(x.app_server).join(' · ');if(key==='database')return stackParts(x.database).join(' · ');if(key==='tls')return stackParts(x.tls).join(' · ');if(key==='edge')return stackParts(x.edge).join(' · ');return '';}
 function infraCell(value){return value?`<div class="stack-cell" title="${esc(value)}">${esc(value)}</div>`:`<div class="stack-cell empty-stack"></div>`;}
 function hubDef(id){return (snapshot.hubs||[]).find(h=>h.id===id)||null;}
 function hubConnMap(p){const m={};for(const c of (p.hubs||[]))m[c.hub_id]=c;return m;}
@@ -103,7 +103,7 @@ function projectHTML(p){
   const st=projectStatus(p), targets=(p.targets||[]).filter(t=>t.enabled&&t.endpoint);
   const last=targets.map(t=>dateValue(t.last_check_at)).filter(Boolean).sort((a,b)=>b-a)[0];
   const next=targets.map(t=>dateValue(t.next_check_at)).filter(Boolean).sort((a,b)=>a-b)[0];
-  const front=infraGroup(p,'front'),proxy=infraGroup(p,'proxy'),app=infraGroup(p,'app'),database=infraGroup(p,'database'),tls=infraGroup(p,'tls');
+  const front=infraGroup(p,'front'),proxy=infraGroup(p,'proxy'),app=infraGroup(p,'app'),database=infraGroup(p,'database'),tls=infraGroup(p,'tls'),edge=infraGroup(p,'edge');
   return `<article class="project ${expanded.has(p.id)?'open':''}" data-project="${esc(p.id)}">
     <div class="project-main" tabindex="0" role="button" aria-expanded="${expanded.has(p.id)}">
       <div class="project-identity"><div class="project-title-row"><span class="status-dot ${st}"></span><span class="project-name">${esc(p.name)}</span><span class="project-id">${esc(p.id)}</span>${p.public_url?`<a class="project-link" href="${esc(p.public_url)}" target="_blank" rel="noreferrer" title="바로 열기">↗</a>`:''}</div><p class="project-kind">${esc(p.category)} · ${esc(p.kind||'구성 미확인')}</p></div>
@@ -112,6 +112,7 @@ function projectHTML(p){
       ${infraCell(app)}
       ${infraCell(database)}
       ${infraCell(tls)}
+      ${infraCell(edge)}
       ${hubCell(p)}
       <span class="status-pill ${st}">${statusText[st]}</span>
       <div class="timing"><strong>${last?since(last):'확인 전'}</strong><span>${next?`다음 ${countdown(next)}`:'자동 체크 없음'}</span></div>

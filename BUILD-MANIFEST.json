@@ -1,20 +1,20 @@
 {
-  "version": "v0.6.26",
+  "version": "v0.6.27",
   "frontend": "https://monitor.suaveforge.com",
   "backend_api": "https://api-monitor.suaveforge.com",
   "source": "frontend-github-pages",
   "files": {
     "index.html": {
-      "bytes": 11738,
-      "sha256": "72cb24a345873352ca39ce7f86d19106c02850ce022f0839dbb34596b72fcc4b"
+      "bytes": 11755,
+      "sha256": "e637829bfa6fb3bace2531bde689f4a991bcdc0e122bb28381749c3f8e9b761e"
     },
     "app.js": {
-      "bytes": 25858,
-      "sha256": "8f6af12ee4ed998d2c3f14c63b0f64c13949cb37a973ef84c34830f3aa346028"
+      "bytes": 25946,
+      "sha256": "b9d6934bd6004c7b239625a2cedf34cc4cb48db9c82cc6a0057891287b3c1311"
     },
     "styles.css": {
-      "bytes": 17661,
-      "sha256": "4f94c00658927d3dbc73862a3fdfc77f0771490ae35de0d4b015ef54cb508b99"
+      "bytes": 18277,
+      "sha256": "6f03ee2a2e62c8c17cd9db4c763a184e50393bc3c6cdf0814a621afb67ccf964"
     },
     "404.html": {
       "bytes": 7792,

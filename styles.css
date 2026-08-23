@@ -20,3 +20,7 @@
 /* v0.6.24 — immutable MONITOR project IDs are visible beside project names for Hub selector alignment. */
 
 .recommendation-url-line{display:flex;align-items:center;gap:8px;min-width:0;margin-top:5px}.recommendation-url-line small{margin:0!important;min-width:0;flex:1}.url-check{flex:none;border-radius:999px;padding:3px 7px;font-size:9px;font-style:normal;font-weight:900;background:#f0f1f3;color:#757c86}.url-check.verified{background:#eaf7ef;color:#126c3b}.url-check.protected{background:#fff4db;color:#8a5a00}.url-check.suspect,.url-check.missing{background:#fdecef;color:#a42b38}.recommendation-url-message{margin:4px 0 0;color:#7d848e;font-size:10px;line-height:1.35}.url-verification-message{margin:0 0 12px;border:1px solid #ead9b6;background:#fff9ed;border-radius:9px;padding:10px 11px;color:#745318;font-size:12px;line-height:1.45}.recommendation-url-modal{width:min(620px,calc(100% - 32px))}
+
+/* v0.6.27: fixed infrastructure inventory columns; Edge is independent from Frontend. */
+.project-columns,.project-main{grid-template-columns:minmax(205px,1.4fr) minmax(88px,.60fr) minmax(82px,.56fr) minmax(94px,.66fr) minmax(76px,.50fr) minmax(106px,.74fr) minmax(92px,.64fr) minmax(88px,.62fr) 70px 100px 18px}.project,.project-columns,.details{min-width:1120px}
+@media(max-width:980px){.project-columns,.project-main{grid-template-columns:minmax(205px,1.4fr) minmax(88px,.60fr) minmax(82px,.56fr) minmax(94px,.66fr) minmax(76px,.50fr) minmax(106px,.74fr) minmax(92px,.64fr) minmax(88px,.62fr) 70px 100px 18px}}
