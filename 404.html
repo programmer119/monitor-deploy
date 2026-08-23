@@ -31,15 +31,19 @@
       <section class="workspace">
         <div class="toolbar">
           <div class="search-wrap"><label for="search">프로젝트 검색</label><input id="search" type="search" placeholder="이름, 도메인, 기술로 검색"></div>
-          <div class="filters" role="group" aria-label="상태 필터">
-            <button class="filter active" data-filter="all">전체</button>
-            <button class="filter" data-filter="normal">정상</button>
-            <button class="filter" data-filter="degraded">주의</button>
-            <button class="filter" data-filter="down">장애</button>
-            <button class="filter" data-filter="unknown">미확인</button>
+          <div class="toolbar-actions">
+            <button class="button" id="detectAllInfraBtn" type="button">전체 인프라 확인</button>
+            <div class="filters" role="group" aria-label="상태 필터">
+              <button class="filter active" data-filter="all">전체</button>
+              <button class="filter" data-filter="normal">정상</button>
+              <button class="filter" data-filter="degraded">주의</button>
+              <button class="filter" data-filter="down">장애</button>
+              <button class="filter" data-filter="unknown">미확인</button>
+            </div>
           </div>
         </div>
         <div class="legend"><span><i class="dot normal"></i>정상</span><span><i class="dot slow"></i>지연</span><span><i class="dot suspect"></i>재확인</span><span><i class="dot down"></i>장애</span><span><i class="dot unknown"></i>미확인</span></div>
+        <div class="project-columns" aria-hidden="true"><span>프로젝트</span><span>프론트</span><span>프록시</span><span>백엔드</span><span>DB</span><span>TLS</span><span>상태</span><span>최근 확인</span><span></span></div>
         <div id="projectList" class="project-list" aria-live="polite"></div>
       </section>
     </main>
@@ -47,12 +51,20 @@
 
   <dialog id="projectDialog" class="modal">
     <form id="projectForm" method="dialog">
-      <div class="modal-head"><div><p class="eyebrow">PROJECT</p><h2>프로젝트 추가</h2></div><button class="icon-button" value="cancel" aria-label="닫기">×</button></div>
+      <input type="hidden" name="project_id">
+      <div class="modal-head"><div><p class="eyebrow">PROJECT</p><h2 id="projectDialogTitle">프로젝트 추가</h2></div><button class="icon-button" value="cancel" aria-label="닫기">×</button></div>
       <div class="form-grid">
         <label>프로젝트명<input name="name" required placeholder="예: New Service"></label>
         <label>구분<select name="category"><option>운영</option><option>데모</option><option>프로토타입</option><option>내부</option><option>종료</option></select></label>
         <label class="wide">설명<input name="kind" placeholder="예: Go API + Svelte Web"></label>
         <label class="wide">공개 URL<input name="public_url" type="url" placeholder="https://..."></label>
+        <label>Frontend / Hosting<input name="infra_frontend" placeholder="예: GitHub Pages"></label>
+        <label>Proxy / Web<input name="infra_proxy_web" placeholder="예: Caddy, Nginx"></label>
+        <label>Backend / App<input name="infra_app_server" placeholder="예: Go, FastAPI, Tomcat"></label>
+        <label>Database<input name="infra_database" placeholder="예: PostgreSQL, MariaDB, SQLite"></label>
+        <label>TLS / 인증서<input name="infra_tls" placeholder="예: Automatic HTTPS, Certbot DNS-01"></label>
+        <label>Edge<input name="infra_edge" placeholder="예: Cloudflare, GitHub Pages"></label>
+        <div class="wide infra-detect-row"><button class="button small" type="button" id="detectInfraBtn">실제 환경 자동 확인</button><span id="infraDetectStatus">123 런타임 · DNS · HTTP 응답을 확인합니다.</span></div>
         <label class="wide">메모<textarea name="notes" rows="3" placeholder="추측하지 않고 확인된 정보만 기록"></textarea></label>
       </div>
       <div class="modal-actions"><button class="button" value="cancel">취소</button><button class="button primary" type="submit" value="default">저장</button></div>

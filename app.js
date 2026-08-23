@@ -3,12 +3,12 @@ const TOKEN_KEY = 'suaveforge-monitor-admin-token';
 let adminToken = localStorage.getItem(TOKEN_KEY) || '';
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => [...root.querySelectorAll(s)];
-let snapshot = {projects:[], history:[], updated:null};
+let snapshot = {projects:[], history:[], recommendations:[], discovery:{}, hubs:[], updated:null};
 let filter = 'all';
 let expanded = new Set();
 let lastFetched = 0;
 
-const statusText = {normal:'정상', slow:'지연', suspect:'재확인', down:'장애', unknown:'미확인', degraded:'주의'};
+const statusText = {normal:'정상', slow:'지연', suspect:'재확인', down:'장애', unknown:'미확인', degraded:'주의', planned:'예정', disabled:'미사용'};
 
 function esc(v=''){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 function projectStatus(p){
@@ -24,8 +24,27 @@ function since(v){const d=dateValue(v);if(!d)return '-';let s=Math.max(0,Math.fl
 function countdown(v){const d=dateValue(v);if(!d)return '-';let s=Math.max(0,Math.ceil((d-Date.now())/1000));if(s<60)return `${s}초`;if(s<3600)return `${Math.floor(s/60)}분 ${s%60}초`;return `${Math.floor(s/3600)}시간 ${Math.floor((s%3600)/60)}분`;}
 function statusClass(s){return ['normal','slow','suspect','down'].includes(s)?s:'unknown';}
 function targetKind(k){return ({http:'HTTP',https:'HTTPS',tcp:'TCP',redis:'Redis',memcache:'Memcache',memcached:'Memcache',postgres:'PostgreSQL',mysql:'MySQL',mariadb:'MariaDB',dns:'DNS',tls:'TLS',ssl:'SSL'})[k]||k.toUpperCase();}
-function infraItems(p){const x=p.infrastructure||{};return [['WEB',x.proxy_web,'Proxy / Web'],['APP',x.app_server,'App Server'],['TLS',x.tls,'TLS / Certificate'],['EDGE',x.edge,'Edge / Delivery']].filter(([,v])=>String(v||'').trim());}
-function infraHTML(p){const items=infraItems(p);return items.length?`<div class="infra-badges">${items.map(([key,value,label])=>`<span class="infra-badge" title="${esc(label)}"><b>${key}</b>${esc(value)}</span>`).join('')}</div>`:'';}
+function infraItems(p){const x=p.infrastructure||{};return [['FRONT',x.frontend,'Frontend / Hosting'],['WEB',x.proxy_web,'Proxy / Web'],['APP',x.app_server,'Backend / App'],['DB',x.database,'Database'],['TLS',x.tls,'TLS / Certificate'],['EDGE',x.edge,'Edge / Delivery']].filter(([,v])=>String(v||'').trim());}
+function stackParts(...values){const out=[];for(const raw of values){for(const part of String(raw||'').split('·')){const v=part.trim();if(v&&!out.some(x=>x.toLowerCase()===v.toLowerCase()))out.push(v)}}return out;}
+function infraGroup(p,key){const x=p.infrastructure||{};if(key==='front')return stackParts(x.frontend,x.edge).join(' · ');if(key==='proxy')return stackParts(x.proxy_web).join(' · ');if(key==='app')return stackParts(x.app_server).join(' · ');if(key==='database')return stackParts(x.database).join(' · ');if(key==='tls')return stackParts(x.tls).join(' · ');return '';}
+function infraCell(value){return value?`<div class="stack-cell" title="${esc(value)}">${esc(value)}</div>`:`<div class="stack-cell empty-stack"></div>`;}
+function hubDef(id){return (snapshot.hubs||[]).find(h=>h.id===id)||null;}
+function hubConnMap(p){const m={};for(const c of (p.hubs||[]))m[c.hub_id]=c;return m;}
+function hubCell(p){
+  const defs={auth:'AUTH',pay:'PAY',localize:'LOC'}, conns=hubConnMap(p);
+  const items=Object.entries(defs).filter(([id])=>conns[id]?.enabled).map(([id,label])=>{const c=conns[id],h=hubDef(id),st=c.status||h?.status||'unknown';return `<span class="hub-mini ${esc(st)}" title="${esc(h?.name||id)} · ${esc(c.message||h?.message||statusText[st]||'미확인')}">${label}</span>`});
+  return items.length?`<div class="hub-cell">${items.join('')}</div>`:`<div class="hub-cell empty-stack"></div>`;
+}
+function renderHubOverview(){
+  const el=$('#hubCards');if(!el)return;
+  el.innerHTML=(snapshot.hubs||[]).map(h=>{const st=h.mode==='planned'?'planned':(h.status||'unknown');const detail=h.mode==='planned'?'추가 예정':(h.last_check_at?`${h.response_ms||'-'} ms · ${since(h.last_check_at)}`:'확인 대기');return `<article class="hub-card"><div class="hub-card-title"><span class="dot ${statusClass(st)}"></span><strong>${esc(h.name)}</strong><span class="hub-mode ${esc(st)}">${esc(statusText[st]||st)}</span></div><div class="hub-url">${h.public_url?`<a href="${esc(h.public_url)}" target="_blank" rel="noreferrer">${esc(h.public_url)}</a>`:'URL 미등록'}</div><small>${esc(detail)}</small></article>`}).join('');
+}
+function renderRecommendations(){
+  const list=$('#recommendationList'), meta=$('#discoveryMeta');if(!list||!meta)return;
+  const d=snapshot.discovery||{}, recs=snapshot.recommendations||[];
+  meta.textContent=d.last_error?`마지막 탐지 실패 · ${d.last_error}`:d.last_check_at?`6시간 주기 자동 탐지 · 마지막 ${since(d.last_check_at)} · 후보 ${recs.length}`:'6시간 주기 자동 탐지 · 첫 확인 대기';
+  list.innerHTML=recs.length?recs.map(r=>`<article class="recommendation-item"><div><strong>${esc(r.name)}</strong><span>${esc(r.repository)}</span><small>${r.public_url?esc(r.public_url):'공개 URL은 등록 후 확인'} · ${r.detected_at?since(r.detected_at):'방금 발견'}</small></div><button class="button primary small register-recommendation" data-recommendation="${esc(r.id)}">등록</button></article>`).join(''):`<div class="recommendation-empty">현재 새로 추천할 프로젝트가 없습니다.</div>`;
+}
 function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2200);}
 
 function showLogin(message=''){
@@ -69,11 +88,11 @@ function summarize(){
   detail.textContent=`정상 ${normal} · 주의 ${degraded} · 장애 ${down} · 미확인 ${unknown}`;
 }
 
-function render(){summarize();
+function render(){summarize();renderHubOverview();renderRecommendations();
   const q=$('#search').value.trim().toLowerCase();
   const list=snapshot.projects.filter(p=>{
     const st=projectStatus(p);if(filter!=='all'&&st!==filter)return false;
-    if(!q)return true;return [p.name,p.kind,p.category,p.public_url,p.notes,...infraItems(p).map(([,v])=>v)].join(' ').toLowerCase().includes(q);
+    if(!q)return true;return [p.id,p.name,p.kind,p.category,p.public_url,p.notes,...infraItems(p).map(([,v])=>v),...(p.hubs||[]).filter(h=>h.enabled).map(h=>hubDef(h.hub_id)?.name||h.hub_id)].join(' ').toLowerCase().includes(q);
   });
   $('#projectList').innerHTML=list.length?list.map(projectHTML).join(''):`<div class="empty">조건에 맞는 프로젝트가 없습니다.</div>`;
   bindRows();
@@ -83,11 +102,16 @@ function projectHTML(p){
   const st=projectStatus(p), targets=(p.targets||[]).filter(t=>t.enabled&&t.endpoint);
   const last=targets.map(t=>dateValue(t.last_check_at)).filter(Boolean).sort((a,b)=>b-a)[0];
   const next=targets.map(t=>dateValue(t.next_check_at)).filter(Boolean).sort((a,b)=>a-b)[0];
-  const comps=targets.length?targets.slice(0,5).map(t=>`<span class="component" title="${esc(t.endpoint)}"><i class="dot ${statusClass(t.status)}"></i>${esc(t.name)}${t.response_ms?` <strong>${t.response_ms}ms</strong>`:''}</span>`).join(''):`<span class="component"><i class="dot unknown"></i>체크 항목 없음</span>`;
+  const front=infraGroup(p,'front'),proxy=infraGroup(p,'proxy'),app=infraGroup(p,'app'),database=infraGroup(p,'database'),tls=infraGroup(p,'tls');
   return `<article class="project ${expanded.has(p.id)?'open':''}" data-project="${esc(p.id)}">
     <div class="project-main" tabindex="0" role="button" aria-expanded="${expanded.has(p.id)}">
-      <div><div class="project-title-row"><span class="status-dot ${st}"></span><span class="project-name">${esc(p.name)}</span>${p.public_url?`<a class="project-link" href="${esc(p.public_url)}" target="_blank" rel="noreferrer" title="바로 열기">↗</a>`:''}</div><p class="project-kind">${esc(p.category)} · ${esc(p.kind||'구성 미확인')}</p>${infraHTML(p)}</div>
-      <div class="components">${comps}</div>
+      <div class="project-identity"><div class="project-title-row"><span class="status-dot ${st}"></span><span class="project-name">${esc(p.name)}</span><span class="project-id">${esc(p.id)}</span>${p.public_url?`<a class="project-link" href="${esc(p.public_url)}" target="_blank" rel="noreferrer" title="바로 열기">↗</a>`:''}</div><p class="project-kind">${esc(p.category)} · ${esc(p.kind||'구성 미확인')}</p></div>
+      ${infraCell(front)}
+      ${infraCell(proxy)}
+      ${infraCell(app)}
+      ${infraCell(database)}
+      ${infraCell(tls)}
+      ${hubCell(p)}
       <span class="status-pill ${st}">${statusText[st]}</span>
       <div class="timing"><strong>${last?since(last):'확인 전'}</strong><span>${next?`다음 ${countdown(next)}`:'자동 체크 없음'}</span></div>
       <span class="chev">›</span>
@@ -117,19 +141,65 @@ function bindRows(){
   $$('.check-now').forEach(b=>b.onclick=async e=>{e.stopPropagation();b.disabled=true;b.textContent='확인 중';try{await api(`/api/targets/${b.dataset.target}/check`,{method:'POST'});toast('즉시 확인을 시작했습니다.');setTimeout(refresh,900)}catch(err){toast(err.message)}finally{setTimeout(()=>{b.disabled=false;b.textContent='지금 확인'},1000)}});
   $$('.edit-target').forEach(b=>b.onclick=e=>{e.stopPropagation();openTargetDialog(null,b.dataset.target)});
   $$('.delete-target').forEach(b=>b.onclick=async e=>{e.stopPropagation();if(!confirm('이 체크 항목을 삭제할까요?'))return;try{await api(`/api/targets/${b.dataset.target}`,{method:'DELETE'});toast('삭제했습니다.');refresh()}catch(err){toast(err.message)}});
+  $$('.register-recommendation').forEach(b=>b.onclick=async()=>{if(b.disabled)return;b.disabled=true;b.textContent='등록 중';try{await api(`/api/recommendations/${encodeURIComponent(b.dataset.recommendation)}/register`,{method:'POST'});toast('실목록에 추가했습니다. 인프라 정보를 자동 확인합니다.');await refresh();setTimeout(refresh,1800)}catch(err){toast(err.message)}finally{b.disabled=false;b.textContent='등록'}});
 }
 
-function fillInfraForm(form,x={}){form.infra_proxy_web.value=x.proxy_web||'';form.infra_app_server.value=x.app_server||'';form.infra_tls.value=x.tls||'';form.infra_edge.value=x.edge||'';}
+function fillInfraForm(form,x={}){form.infra_frontend.value=x.frontend||'';form.infra_proxy_web.value=x.proxy_web||'';form.infra_app_server.value=x.app_server||'';form.infra_database.value=x.database||'';form.infra_tls.value=x.tls||'';form.infra_edge.value=x.edge||'';}
 async function detectProjectInfrastructure(projectId,{quiet=false}={}){
   if(!projectId)return;const form=$('#projectForm'),btn=$('#detectInfraBtn'),status=$('#infraDetectStatus');
   btn.disabled=true;btn.textContent='확인 중';status.textContent='123 런타임 · DNS · HTTP 응답 확인 중…';
   try{const r=await api(`/api/projects/${projectId}/detect-infrastructure`,{method:'POST'});const p=snapshot.projects.find(x=>x.id===projectId);if(p)p.infrastructure=r.infrastructure||{};if(form.project_id.value===projectId)fillInfraForm(form,r.infrastructure||{});const evidence=(r.evidence||[]).join(' · ');status.textContent=evidence||'확정 가능한 인프라 증거를 찾지 못했습니다.';if(!quiet)toast(r.changed?'실제 환경 기준으로 갱신했습니다.':'현재 확인값과 동일합니다.');}
   catch(err){status.textContent=err.message;if(!quiet)toast(err.message)}finally{btn.disabled=false;btn.textContent='실제 환경 자동 확인';}
 }
+async function detectAllInfrastructure(){
+  const btn=$('#detectAllInfraBtn');
+  if(!btn||btn.disabled||!snapshot.projects.length)return;
+  const ids=snapshot.projects.map(p=>p.id);
+  let cursor=0,done=0,changed=0,failed=0;
+  btn.disabled=true;
+  const original='전체 인프라 확인';
+  const update=()=>{btn.textContent=`전체 인프라 확인 ${done}/${ids.length}`;};
+  update();
+  async function worker(workerIndex){
+    if(workerIndex)await new Promise(r=>setTimeout(r,workerIndex*140));
+    while(true){
+      const index=cursor++;
+      if(index>=ids.length)return;
+      const id=ids[index];
+      try{
+        const r=await api(`/api/projects/${id}/detect-infrastructure`,{method:'POST'});
+        if(r.changed)changed++;
+        const p=snapshot.projects.find(x=>x.id===id);if(p)p.infrastructure=r.infrastructure||p.infrastructure||{};
+      }catch{failed++}
+      done++;update();render();
+      await new Promise(r=>setTimeout(r,140));
+    }
+  }
+  try{
+    const workers=Math.min(3,ids.length);
+    await Promise.all(Array.from({length:workers},(_,i)=>worker(i)));
+    await refresh();
+    toast(`전체 인프라 확인 완료 · 갱신 ${changed} · 실패 ${failed}`);
+  }finally{
+    btn.disabled=false;btn.textContent=original;
+  }
+}
+
+function fillProjectHubs(form,p){
+  const m=hubConnMap(p||{});
+  for(const id of ['auth','pay','localize']){const c=m[id]||{};form[`hub_${id}_enabled`].checked=!!c.enabled;form[`hub_${id}_probe`].value=c.probe_url||'';const h=hubDef(id),st=c.enabled?(c.status||h?.status||'unknown'):(h?.mode==='planned'?'planned':'disabled');const el=document.querySelector(`[data-hub-project-status="${id}"]`);if(el)el.textContent=statusText[st]||st;}
+}
+function projectHubsFromForm(form){return ['auth','pay','localize'].map(id=>({hub_id:id,enabled:form[`hub_${id}_enabled`].checked,probe_url:form[`hub_${id}_probe`].value.trim(),status:form[`hub_${id}_enabled`].checked?'unknown':'disabled'}));}
+function openHubDialog(){
+  const rows=$('#hubSettingsRows');
+  rows.innerHTML=(snapshot.hubs||[]).map(h=>`<div class="hub-setting" data-hub-setting="${esc(h.id)}"><div class="hub-setting-head"><strong>${esc(h.name)}</strong><select name="hub_mode_${esc(h.id)}"><option value="active" ${h.mode==='active'?'selected':''}>활성</option><option value="planned" ${h.mode==='planned'?'selected':''}>예정</option></select></div><label>공개 URL<input name="hub_public_${esc(h.id)}" type="url" value="${esc(h.public_url||'')}" placeholder="https://..."></label><label>Health URL<input name="hub_health_${esc(h.id)}" type="url" value="${esc(h.health_url||'')}" placeholder="https://.../health"></label></div>`).join('');
+  $('#hubDialog').showModal();
+}
+
 function openProjectDialog(projectId=''){
   const form=$('#projectForm');form.reset();form.project_id.value=projectId;$('#projectDialogTitle').textContent=projectId?'프로젝트 정보':'프로젝트 추가';$('#infraDetectStatus').textContent=projectId?'123 런타임 · DNS · HTTP 응답을 확인합니다.':'프로젝트 저장 후 자동 확인할 수 있습니다.';$('#detectInfraBtn').disabled=!projectId;
-  let shouldDetect=false;if(projectId){const p=snapshot.projects.find(x=>x.id===projectId);if(p){form.name.value=p.name||'';form.category.value=p.category||'운영';form.kind.value=p.kind||'';form.public_url.value=p.public_url||'';form.notes.value=p.notes||'';const x=p.infrastructure||{};fillInfraForm(form,x);shouldDetect=!x.proxy_web||!x.app_server||!x.tls||!x.edge;}}
-  $('#projectDialog').showModal();if(projectId&&shouldDetect)setTimeout(()=>detectProjectInfrastructure(projectId,{quiet:true}),80);
+  let p=null;if(projectId){p=snapshot.projects.find(x=>x.id===projectId);if(p){form.name.value=p.name||'';form.category.value=p.category||'운영';form.kind.value=p.kind||'';form.public_url.value=p.public_url||'';form.notes.value=p.notes||'';fillInfraForm(form,p.infrastructure||{});}}fillProjectHubs(form,p||{});
+  $('#projectDialog').showModal();
 }
 
 function openTargetDialog(projectId,targetId=''){
@@ -142,9 +212,15 @@ function openTargetDialog(projectId,targetId=''){
 $('#search').addEventListener('input',render);
 $$('.filter').forEach(b=>b.onclick=()=>{$$('.filter').forEach(x=>x.classList.remove('active'));b.classList.add('active');filter=b.dataset.filter;render()});
 $('#addProjectBtn').onclick=()=>openProjectDialog();
-$('#projectForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{const id=f.get('project_id');const current=id?snapshot.projects.find(p=>p.id===id):null;const body={name:f.get('name'),category:f.get('category'),kind:f.get('kind'),public_url:f.get('public_url'),notes:f.get('notes'),monitorable:current?current.monitorable:!!f.get('public_url'),enabled:current?current.enabled:true,infrastructure:{proxy_web:f.get('infra_proxy_web')||'',app_server:f.get('infra_app_server')||'',tls:f.get('infra_tls')||'',edge:f.get('infra_edge')||''}};const p=id?await api(`/api/projects/${id}`,{method:'PUT',body:JSON.stringify(body)}):await api('/api/projects',{method:'POST',body:JSON.stringify(body)});if(!id&&p.public_url){await api(`/api/projects/${p.id}/targets`,{method:'POST',body:JSON.stringify({name:'Public',kind:'http',endpoint:p.public_url,interval_seconds:120,timeout_ms:3000,critical:true,enabled:true})})}$('#projectDialog').close();toast(id?'프로젝트 정보를 수정했습니다.':'프로젝트를 추가했습니다.');refresh()}catch(err){toast(err.message)}});
+$('#detectAllInfraBtn').addEventListener('click',detectAllInfrastructure);
+$('#hubSettingsBtn').addEventListener('click',openHubDialog);
+$('#checkHubsBtn').addEventListener('click',async()=>{const b=$('#checkHubsBtn');b.disabled=true;b.textContent='확인 중';try{await api('/api/hubs/check',{method:'POST'});await refresh();toast('허브 상태를 갱신했습니다.')}catch(err){toast(err.message)}finally{b.disabled=false;b.textContent='허브 확인'}});
+$('#discoverNowBtn').addEventListener('click',async()=>{const b=$('#discoverNowBtn');b.disabled=true;b.textContent='탐지 중';try{snapshot=await api('/api/recommendations/discover',{method:'POST'});render();toast('새 프로젝트 탐지를 완료했습니다.')}catch(err){toast(err.message)}finally{b.disabled=false;b.textContent='새 프로젝트 찾기'}});
+$('#projectForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{const id=f.get('project_id');const current=id?snapshot.projects.find(p=>p.id===id):null;const body={name:f.get('name'),category:f.get('category'),kind:f.get('kind'),public_url:f.get('public_url'),notes:f.get('notes'),monitorable:current?current.monitorable:!!f.get('public_url'),enabled:current?current.enabled:true,infrastructure:{frontend:f.get('infra_frontend')||'',proxy_web:f.get('infra_proxy_web')||'',app_server:f.get('infra_app_server')||'',database:f.get('infra_database')||'',tls:f.get('infra_tls')||'',edge:f.get('infra_edge')||''},hubs:projectHubsFromForm(e.currentTarget)};const p=id?await api(`/api/projects/${id}`,{method:'PUT',body:JSON.stringify(body)}):await api('/api/projects',{method:'POST',body:JSON.stringify(body)});if(!id&&p.public_url){await api(`/api/projects/${p.id}/targets`,{method:'POST',body:JSON.stringify({name:'Public',kind:'http',endpoint:p.public_url,interval_seconds:120,timeout_ms:3000,critical:true,enabled:true})})}$('#projectDialog').close();toast(id?'프로젝트 정보를 수정했습니다.':'프로젝트를 추가했습니다.');api('/api/hubs/check',{method:'POST'}).then(refresh).catch(()=>refresh())}catch(err){toast(err.message)}});
 $('#detectInfraBtn').addEventListener('click',()=>{const id=$('#projectForm').project_id.value;if(id)detectProjectInfrastructure(id);});
 $('#targetForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);const body={name:f.get('name'),kind:f.get('kind'),endpoint:f.get('endpoint'),interval_seconds:Number(f.get('interval_seconds')),timeout_ms:Number(f.get('timeout_ms')),critical:f.get('critical')==='on',enabled:f.get('enabled')==='on'};try{const id=f.get('target_id');if(id)await api(`/api/targets/${id}`,{method:'PUT',body:JSON.stringify(body)});else await api(`/api/projects/${f.get('project_id')}/targets`,{method:'POST',body:JSON.stringify(body)});$('#targetDialog').close();toast(id?'수정했습니다.':'체크 항목을 추가했습니다.');refresh()}catch(err){toast(err.message)}});
+
+$('#hubForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget),btn=e.currentTarget.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='저장 중';try{for(const h of (snapshot.hubs||[])){await api(`/api/hubs/${h.id}`,{method:'PUT',body:JSON.stringify({name:h.name,mode:f.get(`hub_mode_${h.id}`),public_url:f.get(`hub_public_${h.id}`)||'',health_url:f.get(`hub_health_${h.id}`)||''})})}await api('/api/hubs/check',{method:'POST'});$('#hubDialog').close();await refresh();toast('허브 설정과 상태를 갱신했습니다.')}catch(err){toast(err.message)}finally{btn.disabled=false;btn.textContent='저장 후 확인'}});
 
 $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();const token=$('#adminTokenInput').value.trim();if(!token)return;adminToken=token;localStorage.setItem(TOKEN_KEY,token);try{await refresh();}catch{}});
 $('#changeKeyBtn').addEventListener('click',()=>{adminToken='';localStorage.removeItem(TOKEN_KEY);showLogin('새 접근키를 입력해 주세요.');});
