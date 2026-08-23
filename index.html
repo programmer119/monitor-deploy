@@ -119,6 +119,17 @@
     </form>
   </dialog>
 
+  <dialog id="recommendationUrlDialog" class="modal recommendation-url-modal">
+    <form id="recommendationUrlForm">
+      <input type="hidden" name="recommendation_id">
+      <div class="modal-head"><div><p class="eyebrow">URL VERIFICATION</p><h2>실제 운영 URL 확인</h2></div><button class="icon-button" type="button" id="closeRecommendationUrlBtn" aria-label="닫기">×</button></div>
+      <p class="auth-copy">자동으로 찾은 주소를 운영 URL로 확정할 수 없습니다. 실제 서비스 주소를 입력하면 다시 확인한 뒤 등록합니다.</p>
+      <div class="url-verification-message" id="recommendationUrlMessage"></div>
+      <div class="form-grid"><label class="wide">실제 운영 URL<input name="public_url" type="url" required placeholder="https://service.example.com/"></label></div>
+      <div class="modal-actions"><button class="button" type="button" id="cancelRecommendationUrlBtn">취소</button><button class="button primary" type="submit">다시 확인 후 등록</button></div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" role="status"></div>
   <dialog id="loginDialog" class="modal auth-modal">
     <form id="loginForm">
