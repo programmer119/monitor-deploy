@@ -27,7 +27,8 @@ function targetKind(k){return ({http:'HTTP',https:'HTTPS',tcp:'TCP',redis:'Redis
 function infraItems(p){const x=p.infrastructure||{};return [['FRONT',x.frontend,'Frontend'],['WEB',x.proxy_web,'Proxy / Web'],['APP',x.app_server,'Backend / App'],['DB',x.database,'Database'],['TLS',x.tls,'TLS / Certificate'],['EDGE',x.edge,'Edge / Hosting']].filter(([,v])=>String(v||'').trim());}
 function stackParts(...values){const out=[];for(const raw of values){for(const part of String(raw||'').split('·')){const v=part.trim();if(v&&!out.some(x=>x.toLowerCase()===v.toLowerCase()))out.push(v)}}return out;}
 function infraGroup(p,key){const x=p.infrastructure||{};if(key==='front')return stackParts(x.frontend).join(' · ');if(key==='proxy')return stackParts(x.proxy_web).join(' · ');if(key==='app')return stackParts(x.app_server).join(' · ');if(key==='database')return stackParts(x.database).join(' · ');if(key==='tls')return stackParts(x.tls).join(' · ');if(key==='edge')return stackParts(x.edge).join(' · ');return '';}
-function infraCell(value){return value?`<div class="stack-cell" title="${esc(value)}">${esc(value)}</div>`:`<div class="stack-cell empty-stack"></div>`;}
+function infraState(p,key){const x=p.infrastructure_state||{};const map={front:'frontend',proxy:'proxy_web',app:'app_server',database:'database',tls:'tls',edge:'edge'};return x[map[key]]||{state:'unknown',message:'아직 확인되지 않음'};}
+function infraCell(value,fieldState={}){if(value)return `<div class="stack-cell" title="${esc(fieldState.message||value)}">${esc(value)}</div>`;const st=fieldState.state||'unknown',msg=fieldState.message||(st==='absent'?'해당 구성 없음':st==='error'?'검출 오류':'확인 불가');if(st==='absent')return `<div class="stack-cell empty-stack infra-empty infra-absent" title="${esc(msg)}" aria-label="해당 구성 없음">—</div>`;if(st==='error')return `<div class="stack-cell empty-stack infra-empty infra-error" title="${esc(msg)}"><span class="infra-state-icon infra-error-icon" aria-label="검출 오류">⚠</span></div>`;return `<div class="stack-cell empty-stack infra-empty infra-unknown" title="${esc(msg)}"><span class="infra-state-icon infra-unknown-icon" aria-label="확인 불가">?</span></div>`;}
 function hubDef(id){return (snapshot.hubs||[]).find(h=>h.id===id)||null;}
 function hubConnMap(p){const m={};for(const c of (p.hubs||[]))m[c.hub_id]=c;return m;}
 function hubCell(p){
@@ -107,12 +108,12 @@ function projectHTML(p){
   return `<article class="project ${expanded.has(p.id)?'open':''}" data-project="${esc(p.id)}">
     <div class="project-main" tabindex="0" role="button" aria-expanded="${expanded.has(p.id)}">
       <div class="project-identity"><div class="project-title-row"><span class="status-dot ${st}"></span><span class="project-name">${esc(p.name)}</span><span class="project-id">${esc(p.id)}</span>${p.public_url?`<a class="project-link" href="${esc(p.public_url)}" target="_blank" rel="noreferrer" title="바로 열기">↗</a>`:''}</div><p class="project-kind">${esc(p.category)} · ${esc(p.kind||'구성 미확인')}</p></div>
-      ${infraCell(front)}
-      ${infraCell(proxy)}
-      ${infraCell(app)}
-      ${infraCell(database)}
-      ${infraCell(tls)}
-      ${infraCell(edge)}
+      ${infraCell(front,infraState(p,'front'))}
+      ${infraCell(proxy,infraState(p,'proxy'))}
+      ${infraCell(app,infraState(p,'app'))}
+      ${infraCell(database,infraState(p,'database'))}
+      ${infraCell(tls,infraState(p,'tls'))}
+      ${infraCell(edge,infraState(p,'edge'))}
       ${hubCell(p)}
       <span class="status-pill ${st}">${statusText[st]}</span>
       <div class="timing"><strong>${last?since(last):'확인 전'}</strong><span>${next?`다음 ${countdown(next)}`:'자동 체크 없음'}</span></div>
@@ -153,7 +154,7 @@ function fillInfraForm(form,x={}){form.infra_frontend.value=x.frontend||'';form.
 async function detectProjectInfrastructure(projectId,{quiet=false}={}){
   if(!projectId)return;const form=$('#projectForm'),btn=$('#detectInfraBtn'),status=$('#infraDetectStatus');
   btn.disabled=true;btn.textContent='확인 중';status.textContent='123 런타임 · DNS · HTTP 응답 확인 중…';
-  try{const r=await api(`/api/projects/${projectId}/detect-infrastructure`,{method:'POST'});const p=snapshot.projects.find(x=>x.id===projectId);if(p)p.infrastructure=r.infrastructure||{};if(form.project_id.value===projectId)fillInfraForm(form,r.infrastructure||{});const evidence=(r.evidence||[]).join(' · ');status.textContent=evidence||'확정 가능한 인프라 증거를 찾지 못했습니다.';if(!quiet)toast(r.changed?'실제 환경 기준으로 갱신했습니다.':'현재 확인값과 동일합니다.');}
+  try{const r=await api(`/api/projects/${projectId}/detect-infrastructure`,{method:'POST'});const p=snapshot.projects.find(x=>x.id===projectId);if(p){p.infrastructure=r.infrastructure||{};p.infrastructure_state=r.state||p.infrastructure_state||{};}if(form.project_id.value===projectId)fillInfraForm(form,r.infrastructure||{});const evidence=(r.evidence||[]).join(' · ');status.textContent=evidence||'확정 가능한 인프라 증거를 찾지 못했습니다.';if(!quiet)toast(r.changed?'실제 환경 기준으로 갱신했습니다.':'현재 확인값과 동일합니다.');}
   catch(err){status.textContent=err.message;if(!quiet)toast(err.message)}finally{btn.disabled=false;btn.textContent='실제 환경 자동 확인';}
 }
 async function detectAllInfrastructure(){
@@ -174,7 +175,7 @@ async function detectAllInfrastructure(){
       try{
         const r=await api(`/api/projects/${id}/detect-infrastructure`,{method:'POST'});
         if(r.changed)changed++;
-        const p=snapshot.projects.find(x=>x.id===id);if(p)p.infrastructure=r.infrastructure||p.infrastructure||{};
+        const p=snapshot.projects.find(x=>x.id===id);if(p){p.infrastructure=r.infrastructure||p.infrastructure||{};p.infrastructure_state=r.state||p.infrastructure_state||{};}
       }catch{failed++}
       done++;update();render();
       await new Promise(r=>setTimeout(r,140));
