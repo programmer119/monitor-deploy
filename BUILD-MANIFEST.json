@@ -1,5 +1,5 @@
 {
-  "version": "v0.6.28",
+  "version": "v0.6.29",
   "frontend": "https://monitor.suaveforge.com",
   "backend_api": "https://api-monitor.suaveforge.com",
   "source": "frontend-github-pages",
@@ -14,7 +14,7 @@
     },
     "styles.css": {
       "bytes": 18277,
-      "sha256": "46e3c872a4588a7f4a1f766256540cbe7833fc0cf45b0c5174d2dd28919bc5de"
+      "sha256": "9b78154d2212b21e2e8a1898875782e4d76734b90213fb31fc5ad09900006c01"
     },
     "404.html": {
       "bytes": 7792,
