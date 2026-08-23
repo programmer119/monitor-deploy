@@ -17,4 +17,4 @@
 @media(max-width:980px){.hub-cards{grid-template-columns:1fr 1fr}.project-columns,.project-main{grid-template-columns:minmax(205px,1.4fr) minmax(90px,.62fr) minmax(82px,.58fr) minmax(95px,.68fr) minmax(78px,.52fr) minmax(108px,.76fr) minmax(92px,.65fr) 70px 100px 18px}}
 @media(max-width:680px){.hub-cards{grid-template-columns:1fr}.section-head{align-items:flex-start;flex-direction:column}.section-actions{width:100%}.section-actions .button{flex:1}.project-hub-row{grid-template-columns:1fr}.hub-project-status{text-align:left}}
 
-/* v0.6.22 — immutable MONITOR project IDs are visible beside project names for Hub selector alignment. */
+/* v0.6.23 — immutable MONITOR project IDs are visible beside project names for Hub selector alignment. */
