@@ -82,10 +82,10 @@
         <label>Edge<input name="infra_edge" placeholder="예: Cloudflare, GitHub Pages"></label>
         <div class="wide infra-detect-row"><button class="button small" type="button" id="detectInfraBtn">실제 환경 자동 확인</button><span id="infraDetectStatus">123 런타임 · DNS · HTTP 응답을 확인합니다.</span></div>
         <div class="wide project-hubs">
-          <div class="subsection-title"><strong>허브 연결</strong><span>등록한 연결만 목록의 허브 열에 표시합니다.</span></div>
-          <div class="project-hub-row" data-hub-row="auth"><label class="hub-toggle"><input type="checkbox" name="hub_auth_enabled"> Auth Hub</label><input name="hub_auth_probe" type="url" placeholder="비우면 Auth Hub 기본 health 사용"><span class="hub-project-status" data-hub-project-status="auth">미등록</span></div>
-          <div class="project-hub-row" data-hub-row="pay"><label class="hub-toggle"><input type="checkbox" name="hub_pay_enabled"> Pay Hub</label><input name="hub_pay_probe" type="url" placeholder="비우면 Pay Hub 기본 health 사용"><span class="hub-project-status" data-hub-project-status="pay">미등록</span></div>
-          <div class="project-hub-row" data-hub-row="localize"><label class="hub-toggle"><input type="checkbox" name="hub_localize_enabled"> Localize Hub</label><input name="hub_localize_probe" type="url" placeholder="추가 후 연결 확인 URL"><span class="hub-project-status" data-hub-project-status="localize">예정</span></div>
+          <div class="subsection-title"><strong>허브 연결</strong><span>연결 정보는 각 Hub DB에 저장하며 MONITOR는 동기화해서 표시합니다.</span></div>
+          <div class="project-hub-row" data-hub-row="auth"><label class="hub-toggle"><input type="checkbox" name="hub_auth_enabled"> Auth Hub</label><input name="hub_auth_probe" type="url" placeholder="선택사항 · 프로젝트별 연결 확인 URL"><span class="hub-project-status" data-hub-project-status="auth">미등록</span></div>
+          <div class="project-hub-row" data-hub-row="pay"><label class="hub-toggle"><input type="checkbox" name="hub_pay_enabled"> Pay Hub</label><input name="hub_pay_probe" type="url" placeholder="선택사항 · 프로젝트별 연결 확인 URL"><span class="hub-project-status" data-hub-project-status="pay">미등록</span></div>
+          <div class="project-hub-row" data-hub-row="localize"><label class="hub-toggle"><input type="checkbox" name="hub_localize_enabled"> Localize Hub</label><input name="hub_localize_probe" type="url" placeholder="선택사항 · 프로젝트별 연결 확인 URL"><span class="hub-project-status" data-hub-project-status="localize">예정</span></div>
         </div>
         <label class="wide">메모<textarea name="notes" rows="3" placeholder="추측하지 않고 확인된 정보만 기록"></textarea></label>
       </div>
