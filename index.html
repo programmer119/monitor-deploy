@@ -29,24 +29,73 @@
       </section>
 
       <section class="server-overview" aria-label="123 서버 상태">
-        <div class="section-head">
+        <div class="section-head server-section-head">
           <div><p class="eyebrow">SERVER MACHINE</p><h2>123 서버 상태</h2><p id="serverMeta" class="section-note">서버 상태 확인 대기</p></div>
           <div class="section-actions"><button class="button" id="serverAbnormalBtn" type="button">비정상 서비스만</button><button class="button" id="serverRecheckBtn" type="button">전체 재점검</button><button class="button primary" id="serverAutostartBtn" type="button">미등록 자동시작 설정</button></div>
         </div>
-        <div class="server-metric-grid">
-          <article class="server-metric"><span>CPU / LOAD</span><strong id="serverCpu">-</strong><small id="serverLoad">-</small></article>
-          <article class="server-metric"><span>RAM / SWAP</span><strong id="serverRam">-</strong><small id="serverSwap">-</small></article>
-          <article class="server-metric" id="rootFsCard"><span>/ ROOT</span><strong id="serverRoot">-</strong><small id="serverRootInode">-</small></article>
-          <article class="server-metric" id="homeFsCard"><span>/home</span><strong id="serverHome">-</strong><small id="serverHomeInode">-</small></article>
-          <article class="server-metric"><span>PostgreSQL</span><strong id="serverPg">-</strong><small id="serverPgDetail">-</small></article>
-          <article class="server-metric"><span>서비스 / 자동시작</span><strong id="serverServices">-</strong><small id="serverAutostart">-</small></article>
+
+        <div class="server-command-center">
+          <article class="server-health-hero" id="serverHealthHero">
+            <div class="server-health-main">
+              <span class="metric-kicker">MACHINE HEALTH</span>
+              <strong id="serverHealthState">확인 중</strong>
+              <small id="serverHealthDetail">실제 서버 상태를 계산합니다.</small>
+            </div>
+            <div class="server-health-counts" aria-label="서비스 상태 집계">
+              <span class="health-count normal"><b id="serverRunningCount">0</b>정상</span>
+              <span class="health-count warning"><b id="serverWarningCount">0</b>주의</span>
+              <span class="health-count critical"><b id="serverDownCount">0</b>장애</span>
+              <span class="health-count unknown"><b id="serverReviewCount">0</b>확인필요</span>
+            </div>
+          </article>
+          <div class="server-action-panel">
+            <div class="action-panel-head"><div><span class="metric-kicker">ACTION REQUIRED</span><strong>지금 조치 필요한 것</strong></div><span id="serverActionCount" class="action-count">0</span></div>
+            <div id="serverActionRequired" class="server-action-list"></div>
+          </div>
         </div>
+
+        <div class="server-resource-grid">
+          <article class="resource-card" id="cpuMetricCard">
+            <div class="resource-head"><span>CPU</span><strong id="serverCpu">-</strong></div>
+            <div class="battery-meter" id="serverCpuMeter" role="meter" aria-label="CPU 사용률"><i></i><b class="mark mark80"></b><b class="mark mark90"></b></div>
+            <div class="resource-foot"><small id="serverLoad">-</small><span id="serverCpuTrend" class="metric-trend"></span></div>
+          </article>
+          <article class="resource-card" id="ramMetricCard">
+            <div class="resource-head"><span>RAM</span><strong id="serverRam">-</strong></div>
+            <div class="battery-meter" id="serverRamMeter" role="meter" aria-label="메모리 사용률"><i></i><b class="mark mark80"></b><b class="mark mark90"></b></div>
+            <div class="resource-foot"><small id="serverSwap">-</small><span id="serverRamTrend" class="metric-trend"></span></div>
+          </article>
+          <article class="resource-card" id="rootFsCard">
+            <div class="resource-head"><span>/ ROOT</span><strong id="serverRoot">-</strong></div>
+            <div class="battery-meter disk-meter" id="serverRootMeter" role="meter" aria-label="루트 디스크 사용률"><i></i><b class="mark mark80"></b><b class="mark mark90"></b><b class="mark mark95"></b></div>
+            <div class="resource-foot"><small id="serverRootInode">-</small><span id="serverRootTrend" class="metric-trend"></span></div>
+          </article>
+          <article class="resource-card" id="homeFsCard">
+            <div class="resource-head"><span>/home</span><strong id="serverHome">-</strong></div>
+            <div class="battery-meter disk-meter" id="serverHomeMeter" role="meter" aria-label="home 디스크 사용률"><i></i><b class="mark mark80"></b><b class="mark mark90"></b><b class="mark mark95"></b></div>
+            <div class="resource-foot"><small id="serverHomeInode">-</small><span id="serverHomeTrend" class="metric-trend"></span></div>
+          </article>
+        </div>
+
+        <div class="server-secondary-grid">
+          <article class="server-secondary-card" id="postgresCard">
+            <div class="secondary-card-head"><div><span class="metric-kicker">DATABASE</span><strong>PostgreSQL</strong></div><em id="serverPgState" class="compact-state unknown">확인 중</em></div>
+            <div class="secondary-card-value"><strong id="serverPg">-</strong><small id="serverPgDetail">-</small></div>
+            <div id="serverPgInstances" class="pg-instance-list"></div>
+          </article>
+          <article class="server-secondary-card" id="serviceSummaryCard">
+            <div class="secondary-card-head"><div><span class="metric-kicker">RECOVERY</span><strong>서비스 / 자동시작</strong></div><em id="serverAutoState" class="compact-state unknown">확인 중</em></div>
+            <div class="secondary-card-value"><strong id="serverServices">-</strong><small id="serverAutostart">-</small></div>
+            <div class="autostart-stack"><span><i class="normal"></i><b id="autoEnabledBar">0</b> 등록</span><span><i class="warning"></i><b id="autoMissingBar">0</b> 미등록</span><span><i class="unknown"></i><b id="autoReviewBar">0</b> 확인필요</span></div>
+          </article>
+        </div>
+
         <div id="serverAlerts" class="server-alerts"></div>
         <div class="server-service-table">
-          <div class="server-service-head"><span>프로젝트 / 프로세스</span><span>방식</span><span>상태</span><span>PID · Uptime</span><span>Port / Health</span><span>자동시작</span><span>제어</span></div>
-          <div id="serverServiceRows" class="server-service-rows"></div>
+          <div class="server-service-title"><div><span class="metric-kicker">SERVICE REGISTRY</span><strong>프로젝트별 프로세스</strong></div><small>정상 프로젝트는 접고, 장애·주의·확인필요 프로젝트는 자동으로 펼칩니다.</small></div>
+          <div id="serverServiceRows" class="server-service-groups"></div>
         </div>
-        <details class="server-detail"><summary>로그 증가 / 최근 커널 오류</summary><div class="server-detail-grid"><div><h3>큰 로그</h3><div id="serverLogRows" class="server-log-rows"></div></div><div><h3>최근 커널 오류</h3><div id="serverKernelErrors" class="server-kernel-errors"></div></div></div></details>
+        <details class="server-detail"><summary>스토리지 / 로그 / 최근 커널 오류</summary><div class="server-detail-grid"><div><h3>큰 로그 · 증가속도</h3><div id="serverLogRows" class="server-log-rows"></div></div><div><h3>최근 커널 오류</h3><div id="serverKernelErrors" class="server-kernel-errors"></div></div></div></details>
       </section>
 
       <section class="hub-overview" aria-label="공용 허브 상태">
