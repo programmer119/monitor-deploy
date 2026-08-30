@@ -1,5 +1,5 @@
 {
-  "version": "v0.6.58",
+  "version": "v0.6.59",
   "frontend": "https://monitor.suaveforge.com",
   "backend_api": "https://api-monitor.suaveforge.com",
   "source": "frontend-github-pages",
