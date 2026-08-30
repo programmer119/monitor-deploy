@@ -4,11 +4,14 @@ let adminToken = localStorage.getItem(TOKEN_KEY) || '';
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 let snapshot = {projects:[], history:[], recommendations:[], discovery:{}, hubs:[], updated:null};
+let serverSnapshot = {summary:{},cpu:{},memory:{},filesystems:[],postgresql:{},kernel:{},logs:[],services:[]};
+let serverLastFetched = 0;
+let serverAbnormalOnly = false;
 let filter = 'all';
 let expanded = new Set();
 let lastFetched = 0;
 
-const statusText = {normal:'정상', slow:'지연', suspect:'재확인', down:'장애', unknown:'미확인', degraded:'주의', planned:'예정', disabled:'미사용'};
+const statusText = {normal:'정상', slow:'지연', suspect:'재확인', down:'장애', unknown:'미확인', degraded:'주의', planned:'예정', disabled:'미사용', sync_error:'동기화 오류'};
 
 function esc(v=''){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 function projectStatus(p){
@@ -72,6 +75,32 @@ async function refresh(){
   catch(e){if(adminToken){toast(e.message);$('#refreshAge').textContent='연결 오류';}}
 }
 
+function bytes(v){v=Number(v||0);if(!v)return '0 B';const u=['B','KB','MB','GB','TB'];let i=0;while(v>=1024&&i<u.length-1){v/=1024;i++}return `${v>=10||i===0?v.toFixed(0):v.toFixed(1)} ${u[i]}`;}
+function pct(v){return `${Number(v||0).toFixed(1)}%`;}
+function uptime(v){let s=Math.max(0,Number(v||0));if(!s)return '-';const d=Math.floor(s/86400);s%=86400;const h=Math.floor(s/3600);s%=3600;const m=Math.floor(s/60);if(d)return `${d}일 ${h}시간`;if(h)return `${h}시간 ${m}분`;return `${m}분`;}
+function serverFs(path){return (serverSnapshot.filesystems||[]).find(x=>x.path===path)||{};}
+function serverStatusLabel(v){return ({running:'RUNNING',down:'DOWN',degraded:'주의',unknown:'미확인',review:'확인 필요',enabled:'등록됨',missing:'미등록',unsupported:'해당 없음'})[v]||v||'-';}
+function serverStateClass(v){if(['running','enabled','normal'].includes(v))return 'normal';if(['down','critical'].includes(v))return 'down';if(['degraded','warning','missing','review'].includes(v))return 'slow';return 'unknown';}
+function renderServer(){
+  const s=serverSnapshot||{},cpu=s.cpu||{},mem=s.memory||{},pg=s.postgresql||{},sum=s.summary||{},root=serverFs('/'),home=serverFs('/home');
+  $('#serverMeta').textContent=s.generated_at?`${since(s.generated_at)} 확인 · ${s.discovery_message||'서비스 레지스트리 자동탐지'}`:'서버 상태 확인 대기';
+  $('#serverCpu').textContent=`${pct(cpu.usage_percent)} · I/O ${pct(cpu.iowait_percent)}`;$('#serverLoad').textContent=`load ${Number(cpu.load1||0).toFixed(2)} / ${Number(cpu.load5||0).toFixed(2)} / ${Number(cpu.load15||0).toFixed(2)} · ${cpu.cores||'-'} cores`;
+  $('#serverRam').textContent=`${pct(mem.used_percent)} · ${bytes(mem.used_bytes)} / ${bytes(mem.total_bytes)}`;$('#serverSwap').textContent=`swap ${pct(mem.swap_used_percent)} · ${bytes(mem.swap_used_bytes)} / ${bytes(mem.swap_total_bytes)}`;
+  $('#serverRoot').textContent=`${pct(root.used_percent)} · ${bytes(root.used_bytes)} / ${bytes(root.total_bytes)}`;$('#serverRootInode').textContent=`inode ${pct(root.inode_used_percent)}${root.message?` · ${root.message}`:''}`;
+  $('#serverHome').textContent=`${pct(home.used_percent)} · ${bytes(home.used_bytes)} / ${bytes(home.total_bytes)}`;$('#serverHomeInode').textContent=`inode ${pct(home.inode_used_percent)}${home.message?` · ${home.message}`:''}`;
+  for(const [id,fs] of [['rootFsCard',root],['homeFsCard',home]]){const el=$('#'+id);el.classList.remove('warning','critical');if(fs.severity==='warning')el.classList.add('warning');if(fs.severity==='critical')el.classList.add('critical')}
+  $('#serverPg').textContent=!pg.detected?'미검출':pg.connect_ok?'정상 연결':pg.running?'연결 실패':'DOWN';$('#serverPgDetail').textContent=pg.connect_ok?`${bytes(pg.total_db_bytes)} · connection ${pg.connections||0}/${pg.max_connections||'-'}`:(pg.message||'-');
+  $('#serverServices').textContent=`${sum.service_running||0}/${sum.service_total||0} RUNNING`;$('#serverAutostart').textContent=`자동시작 ${sum.autostart_enabled||0} · 미등록 ${sum.autostart_missing||0} · 확인필요 ${sum.autostart_review||0}`;
+  const alerts=[];if(root.severity==='critical')alerts.push(`<span class="server-alert critical">/ 사용률 ${pct(root.used_percent)} · ${esc(root.message||'위험')}</span>`);else if(root.severity==='warning')alerts.push(`<span class="server-alert warning">/ 사용률 ${pct(root.used_percent)} · 주의</span>`);if((s.kernel||{}).oom_detected)alerts.push('<span class="server-alert critical">최근 OOM 흔적</span>');if((s.kernel||{}).io_error_detected)alerts.push('<span class="server-alert critical">최근 I/O 오류 흔적</span>');if((s.kernel||{}).hardware_error_detected)alerts.push('<span class="server-alert warning">MCE/EDAC 하드웨어 오류 흔적</span>');for(const l of (s.logs||[]).filter(x=>x.growth_state!=='normal').slice(0,4))alerts.push(`<span class="server-alert ${esc(l.growth_state)}">${esc(l.path)} · ${bytes(l.size_bytes)} · 급증</span>`);$('#serverAlerts').innerHTML=alerts.join('');
+  const projectById=new Map((snapshot.projects||[]).map(p=>[p.id,p]));let services=(s.services||[]);if(serverAbnormalOnly)services=services.filter(v=>v.status!=='running'||!['enabled','unsupported'].includes(v.auto_start_status));
+  $('#serverServiceRows').innerHTML=services.length?services.map(v=>{const p=projectById.get(v.project_id);const ports=(v.ports||[]).join(', ')||v.port||'-';const health=v.health_url?`${v.health_status==='normal'?'✓':'!'} ${v.health_http_status||''}`:'-';const control=v.control_enabled?`<button class="mini-action service-action" data-service="${esc(v.id)}" data-action="start">START</button><button class="mini-action service-action" data-service="${esc(v.id)}" data-action="stop">STOP</button><button class="mini-action service-action" data-service="${esc(v.id)}" data-action="restart">RESTART</button>`:`<span class="service-review" title="${esc(v.message||'확인 필요')}">확인 필요</span>`;return `<div class="server-service-row"><span><strong>${esc(p?.name||v.project_id||'SYSTEM')}</strong><small>${esc(v.name||v.manager_ref)}</small></span><span>${esc(v.manager)}<small>${esc(v.manager_ref)}</small></span><span><em class="service-state ${serverStateClass(v.status)}">${esc(serverStatusLabel(v.status))}</em><button class="service-log-button" data-service-errors="${esc(v.id)}" data-service-name="${esc(v.name||v.manager_ref)}">로그</button></span><span>${v.pid||'-'}<small>${uptime(v.uptime_seconds)}</small></span><span>${esc(String(ports))}<small>${esc(health)}</small></span><span><em class="service-state ${serverStateClass(v.auto_start_status)}" title="${esc(v.auto_start_message||'')}">${esc(serverStatusLabel(v.auto_start_status))}</em></span><span class="service-controls">${control}</span></div>`}).join(''):'<div class="server-service-empty">조건에 맞는 서비스가 없습니다.</div>';
+  $('#serverLogRows').innerHTML=(s.logs||[]).length?(s.logs||[]).slice(0,12).map(l=>`<div class="server-log-row"><span title="${esc(l.path)}">${esc(l.path)}</span><strong>${bytes(l.size_bytes)}</strong><em class="${serverStateClass(l.growth_state)}">${l.growth_bytes_per_minute?`${bytes(l.growth_bytes_per_minute)}/분`:'안정'}</em></div>`).join(''):'<div class="server-service-empty">표시할 로그가 없습니다.</div>';
+  const errs=(s.kernel||{}).recent_errors||[];$('#serverKernelErrors').innerHTML=errs.length?errs.map(x=>`<code>${esc(x)}</code>`).join(''):'<div class="server-service-empty">최근 커널 오류 없음</div>';
+}
+async function refreshServer(force=false){if(!adminToken)return;try{serverSnapshot=await api(force?'/api/server/recheck':'/api/server/snapshot',{method:force?'POST':'GET'});serverLastFetched=Date.now();renderServer()}catch(err){$('#serverMeta').textContent=`서버 상태 확인 실패 · ${err.message}`;}}
+async function serverServiceAction(id,action){const label=action.toUpperCase();if((action==='stop'||action==='restart')&&!confirm(`${label} 실행할까? 등록된 이 서비스에만 적용된다.`))return;try{await api(`/api/server/services/${encodeURIComponent(id)}/${action}`,{method:'POST'});toast(`${label} 완료`);await refreshServer(true)}catch(err){toast(err.message)}}
+async function showServiceErrors(id,name){const dlg=$('#serviceErrorsDialog');$('#serviceErrorsTitle').textContent=`${name} 최근 오류`;$('#serviceErrorsBody').textContent='확인 중…';dlg.showModal();try{const r=await api(`/api/server/services/${encodeURIComponent(id)}/errors`);$('#serviceErrorsBody').textContent=(r.lines||[]).join('\n')||'최근 오류 로그 없음'}catch(err){$('#serviceErrorsBody').textContent=err.message}}
+
 function summarize(){
   const states=snapshot.projects.map(projectStatus);
   const count=k=>states.filter(s=>s===k).length;
@@ -90,7 +119,7 @@ function summarize(){
   detail.textContent=`정상 ${normal} · 주의 ${degraded} · 장애 ${down} · 미확인 ${unknown}`;
 }
 
-function render(){summarize();renderHubOverview();renderRecommendations();
+function render(){summarize();renderHubOverview();renderRecommendations();renderServer();
   const q=$('#search').value.trim().toLowerCase();
   const list=snapshot.projects.filter(p=>{
     const st=projectStatus(p);if(filter!=='all'&&st!==filter)return false;
@@ -193,13 +222,21 @@ async function detectAllInfrastructure(){
 
 function fillProjectHubs(form,p){
   const m=hubConnMap(p||{});
-  for(const id of ['auth','pay','localize']){const c=m[id]||{};form[`hub_${id}_enabled`].checked=!!c.enabled;form[`hub_${id}_probe`].value=c.probe_url||'';const h=hubDef(id),st=c.enabled?(c.status||h?.status||'unknown'):(h?.mode==='planned'?'planned':'disabled');const el=document.querySelector(`[data-hub-project-status="${id}"]`);if(el)el.textContent=statusText[st]||st;}
+  for(const id of ['auth','pay','localize']){
+    const c=m[id]||{},h=hubDef(id),input=form[`hub_${id}_enabled`];
+    input.checked=!!c.enabled;
+    input.indeterminate=!!(h?.mode==='active'&&h?.sync_status==='down'&&(!c.source||c.source==='sync-error'));
+    form[`hub_${id}_probe`].value=c.probe_url||'';
+    const st=h?.mode==='planned'?'planned':((c.status==='sync_error'||h?.sync_status==='down')?'sync_error':(c.enabled?(c.status||h?.status||'unknown'):'disabled'));
+    const el=document.querySelector(`[data-hub-project-status="${id}"]`);
+    if(el){el.textContent=statusText[st]||st;el.title=c.message||h?.sync_message||'';}
+  }
 }
 function projectHubsFromForm(form){return ['auth','pay','localize'].map(id=>({hub_id:id,enabled:form[`hub_${id}_enabled`].checked,probe_url:form[`hub_${id}_probe`].value.trim(),status:form[`hub_${id}_enabled`].checked?'unknown':'disabled'}));}
 async function syncProjectHubs(projectId,desired,current){const before=hubConnMap(current||{}),errors=[];for(const d of desired){const h=hubDef(d.hub_id);if(!h||h.mode!=='active'){if(d.enabled)errors.push(`${h?.name||d.hub_id}: 아직 활성 Hub가 아닙니다.`);continue}const prev=before[d.hub_id]||{};if(!!prev.enabled===!!d.enabled&&String(prev.probe_url||'').trim()===String(d.probe_url||'').trim())continue;try{await api(`/api/projects/${encodeURIComponent(projectId)}/hubs/${encodeURIComponent(d.hub_id)}`,{method:'PUT',body:JSON.stringify({enabled:!!d.enabled,probe_url:d.probe_url||''})})}catch(err){errors.push(`${h.name}: ${err.message}`)}}return errors;}
 function openHubDialog(){
   const rows=$('#hubSettingsRows');
-  rows.innerHTML=(snapshot.hubs||[]).map(h=>`<div class="hub-setting" data-hub-setting="${esc(h.id)}"><div class="hub-setting-head"><strong>${esc(h.name)}</strong><select name="hub_mode_${esc(h.id)}"><option value="active" ${h.mode==='active'?'selected':''}>활성</option><option value="planned" ${h.mode==='planned'?'selected':''}>예정</option></select></div><label>공개 URL<input name="hub_public_${esc(h.id)}" type="url" value="${esc(h.public_url||'')}" placeholder="https://..."></label><label>Health URL<input name="hub_health_${esc(h.id)}" type="url" value="${esc(h.health_url||'')}" placeholder="https://.../health"></label><label>연결 동기화 API<input name="hub_sync_${esc(h.id)}" type="url" value="${esc(h.sync_url||'')}" placeholder="https://.../api/integration/monitor/projects"></label></div>`).join('');
+  rows.innerHTML=(snapshot.hubs||[]).map(h=>`<div class="hub-setting" data-hub-setting="${esc(h.id)}"><div class="hub-setting-head"><strong>${esc(h.name)}</strong><select name="hub_mode_${esc(h.id)}"><option value="active" ${h.mode==='active'?'selected':''}>활성</option><option value="planned" ${h.mode==='planned'?'selected':''}>예정</option></select></div><label>공개 URL<input name="hub_public_${esc(h.id)}" type="url" value="${esc(h.public_url||'')}" placeholder="https://..."></label><label>Health URL<input name="hub_health_${esc(h.id)}" type="url" value="${esc(h.health_url||'')}" placeholder="https://.../health"></label><label>연결 동기화 API<input name="hub_sync_${esc(h.id)}" type="url" value="${esc(h.sync_url||'')}" placeholder="https://.../api/integration/projects"></label></div>`).join('');
   $('#hubDialog').showModal();
 }
 
@@ -232,8 +269,16 @@ $('#recommendationUrlForm').addEventListener('submit',async e=>{e.preventDefault
 
 $('#hubForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget),btn=e.currentTarget.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='저장 중';try{for(const h of (snapshot.hubs||[])){await api(`/api/hubs/${h.id}`,{method:'PUT',body:JSON.stringify({name:h.name,mode:f.get(`hub_mode_${h.id}`),public_url:f.get(`hub_public_${h.id}`)||'',health_url:f.get(`hub_health_${h.id}`)||'',sync_url:f.get(`hub_sync_${h.id}`)||''})})}await api('/api/hubs/check',{method:'POST'});$('#hubDialog').close();await refresh();toast('허브 설정과 상태를 갱신했습니다.')}catch(err){toast(err.message)}finally{btn.disabled=false;btn.textContent='저장 후 확인'}});
 
-$('#loginForm').addEventListener('submit',async e=>{e.preventDefault();const token=$('#adminTokenInput').value.trim();if(!token)return;adminToken=token;localStorage.setItem(TOKEN_KEY,token);try{await refresh();}catch{}});
+$('#serverRecheckBtn').addEventListener('click',async()=>{const b=$('#serverRecheckBtn');b.disabled=true;b.textContent='점검 중';try{await refreshServer(true);toast('서버 전체 재점검 완료')}finally{b.disabled=false;b.textContent='전체 재점검'}});
+$('#serverAbnormalBtn').addEventListener('click',()=>{serverAbnormalOnly=!serverAbnormalOnly;$('#serverAbnormalBtn').classList.toggle('active',serverAbnormalOnly);$('#serverAbnormalBtn').textContent=serverAbnormalOnly?'전체 서비스 보기':'비정상 서비스만';renderServer()});
+$('#serverAutostartBtn').addEventListener('click',async()=>{if(!confirm('확정된 systemd / PM2 / Docker 서비스의 미등록 자동시작만 설정한다. 확인 필요 항목은 건드리지 않는다. 진행할까?'))return;const b=$('#serverAutostartBtn');b.disabled=true;b.textContent='설정 중';try{const r=await api('/api/server/autostart/apply',{method:'POST'});serverSnapshot=r.snapshot||serverSnapshot;renderServer();const x=r.result||{};toast(`자동시작 설정 완료 · 갱신 ${x.updated||0} · 보류 ${x.skipped||0}`)}catch(err){toast(err.message);await refreshServer(true)}finally{b.disabled=false;b.textContent='미등록 자동시작 설정'}});
+document.addEventListener('click',e=>{const a=e.target.closest('.service-action');if(a){serverServiceAction(a.dataset.service,a.dataset.action);return}const l=e.target.closest('[data-service-errors]');if(l)showServiceErrors(l.dataset.serviceErrors,l.dataset.serviceName||'서비스')});
+$('#closeServiceErrorsBtn').addEventListener('click',()=>$('#serviceErrorsDialog').close());
+
+$('#loginForm').addEventListener('submit',async e=>{e.preventDefault();const token=$('#adminTokenInput').value.trim();if(!token)return;adminToken=token;localStorage.setItem(TOKEN_KEY,token);try{await refresh();await refreshServer(true);}catch{}});
 $('#changeKeyBtn').addEventListener('click',()=>{adminToken='';localStorage.removeItem(TOKEN_KEY);showLogin('새 접근키를 입력해 주세요.');});
 setInterval(()=>{if(lastFetched)$('#refreshAge').textContent=`${Math.floor((Date.now()-lastFetched)/1000)}초 전`;if(snapshot.projects.length){summarize();$$('.project').forEach(el=>{});}},1000);
 setInterval(refresh,5000);
+setInterval(()=>refreshServer(false),15000);
 refresh();
+refreshServer(true);

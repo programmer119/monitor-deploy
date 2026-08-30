@@ -28,6 +28,27 @@
         <article class="summary-card"><span class="summary-label">최근 확인</span><strong id="lastCheck">-</strong><small id="nextCheck">다음 확인 -</small></article>
       </section>
 
+      <section class="server-overview" aria-label="123 서버 상태">
+        <div class="section-head">
+          <div><p class="eyebrow">SERVER MACHINE</p><h2>123 서버 상태</h2><p id="serverMeta" class="section-note">서버 상태 확인 대기</p></div>
+          <div class="section-actions"><button class="button" id="serverAbnormalBtn" type="button">비정상 서비스만</button><button class="button" id="serverRecheckBtn" type="button">전체 재점검</button><button class="button primary" id="serverAutostartBtn" type="button">미등록 자동시작 설정</button></div>
+        </div>
+        <div class="server-metric-grid">
+          <article class="server-metric"><span>CPU / LOAD</span><strong id="serverCpu">-</strong><small id="serverLoad">-</small></article>
+          <article class="server-metric"><span>RAM / SWAP</span><strong id="serverRam">-</strong><small id="serverSwap">-</small></article>
+          <article class="server-metric" id="rootFsCard"><span>/ ROOT</span><strong id="serverRoot">-</strong><small id="serverRootInode">-</small></article>
+          <article class="server-metric" id="homeFsCard"><span>/home</span><strong id="serverHome">-</strong><small id="serverHomeInode">-</small></article>
+          <article class="server-metric"><span>PostgreSQL</span><strong id="serverPg">-</strong><small id="serverPgDetail">-</small></article>
+          <article class="server-metric"><span>서비스 / 자동시작</span><strong id="serverServices">-</strong><small id="serverAutostart">-</small></article>
+        </div>
+        <div id="serverAlerts" class="server-alerts"></div>
+        <div class="server-service-table">
+          <div class="server-service-head"><span>프로젝트 / 프로세스</span><span>방식</span><span>상태</span><span>PID · Uptime</span><span>Port / Health</span><span>자동시작</span><span>제어</span></div>
+          <div id="serverServiceRows" class="server-service-rows"></div>
+        </div>
+        <details class="server-detail"><summary>로그 증가 / 최근 커널 오류</summary><div class="server-detail-grid"><div><h3>큰 로그</h3><div id="serverLogRows" class="server-log-rows"></div></div><div><h3>최근 커널 오류</h3><div id="serverKernelErrors" class="server-kernel-errors"></div></div></div></details>
+      </section>
+
       <section class="hub-overview" aria-label="공용 허브 상태">
         <div class="section-head">
           <div><p class="eyebrow">SHARED HUBS</p><h2>허브 연결 상태</h2></div>
@@ -130,6 +151,7 @@
     </form>
   </dialog>
 
+  <dialog id="serviceErrorsDialog" class="modal service-errors-modal"><div class="modal-head"><div><p class="eyebrow">SERVICE LOG</p><h2 id="serviceErrorsTitle">최근 오류</h2></div><button class="icon-button" type="button" id="closeServiceErrorsBtn" aria-label="닫기">×</button></div><pre id="serviceErrorsBody" class="service-errors-body">확인 중</pre></dialog>
   <div id="toast" class="toast" role="status"></div>
   <dialog id="loginDialog" class="modal auth-modal">
     <form id="loginForm">
