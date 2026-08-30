@@ -165,7 +165,7 @@ function renderServer(){
   if(home.severity==='critical')actions.push({state:'critical',title:'/home 파일시스템 위험',detail:`${pct(home.used_percent)} 사용 · ${home.message||'즉시 확인'}`});else if(home.severity==='warning')actions.push({state:'warning',title:'/home 파일시스템 주의',detail:`${pct(home.used_percent)} 사용`});
   if(pg.detected&&!pg.connect_ok&&!pgBlockedOnlyByDocker)actions.push({state:'critical',title:'PostgreSQL 연결 확인 필요',detail:pg.message||'실행 인스턴스 연결 실패'});
   if(sum.service_down)actions.push({state:'critical',title:`DOWN 서비스 ${sum.service_down}개`,detail:docker.installed&&!docker.running?`격리 Docker 부모 복구가 먼저 필요 · Docker 하위 ${dockerDownServices.length}개는 개별 START/RESTART 잠금`:'프로젝트별 등록 서비스에서 안전한 START/RESTART 가능'});
-  if(sum.service_degraded)actions.push({state:'warning',title:`주의 서비스 ${sum.service_degraded}개`,detail:'프로세스는 실행 중이나 health check 이상'});
+  if(sum.service_degraded)actions.push({state:'warning',title:`주의 서비스 ${sum.service_degraded}개`,detail:'재시작 중이거나 실행 상태가 불안정함'});
   if(sum.autostart_missing)actions.push({state:'warning',title:`자동시작 미등록 ${sum.autostart_missing}개`,detail:docker.installed&&docker.auto_start_status==='missing'?'격리 Docker 부모 runtime 포함 · 기존 /home data-root·socket·metadata를 transient 검증한 뒤 일치할 때만 복구/영구등록':'재부팅 복구를 위해 등록 권장'});
   if(sum.autostart_review)actions.push({state:'unknown',title:`자동시작 확인 필요 ${sum.autostart_review}개`,detail:'standalone 등 실행계약 확인 필요'});
   if((s.kernel||{}).oom_detected)actions.push({state:'critical',title:'최근 OOM 흔적',detail:'메모리 부족으로 프로세스 종료 흔적 발견'});if((s.kernel||{}).io_error_detected)actions.push({state:'critical',title:'최근 I/O 오류 흔적',detail:'디스크/파일시스템 오류 로그 확인'});if((s.kernel||{}).hardware_error_detected)actions.push({state:'warning',title:'MCE/EDAC 흔적',detail:'하드웨어 오류 로그 확인'});
