@@ -1,6 +1,6 @@
 # MONITOR public frontend
 
-Version: v0.6.53
+Version: v0.6.55
 Frontend: https://monitor.suaveforge.com
 Backend API: https://api-monitor.suaveforge.com
 
