@@ -15,7 +15,7 @@ let lastFetched = 0;
 const statusText = {normal:'정상', slow:'지연', suspect:'재확인', down:'장애', unknown:'미확인', degraded:'주의', planned:'예정', disabled:'미사용', sync_error:'동기화 오류'};
 
 function esc(v=''){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
-function projectStatus(p){
+function targetProjectStatus(p){
   const ts=(p.targets||[]).filter(t=>t.enabled && t.endpoint);
   if(!p.enabled || ts.length===0) return 'unknown';
   if(ts.some(t=>t.critical && t.status==='down')) return 'down';
@@ -23,6 +23,34 @@ function projectStatus(p){
   if(ts.every(t=>t.status==='normal')) return 'normal';
   return 'unknown';
 }
+function projectRuntimeInfo(p){
+  const items=(serverSnapshot.services||[]).filter(v=>v.project_id===p.id);
+  if(!items.length)return null;
+  const running=items.filter(v=>v.status==='running').length;
+  const down=items.filter(v=>v.status==='down').length;
+  const degraded=items.filter(v=>v.status==='degraded').length;
+  const review=items.filter(v=>['unknown','review'].includes(v.status)).length;
+  const dockerItems=items.filter(v=>v.manager==='docker');
+  const docker=serverSnapshot.docker_runtime||{};
+  const parentDockerDown=!!(dockerItems.length&&docker.installed&&!docker.running);
+  let state='normal';
+  if(parentDockerDown||down)state='down';
+  else if(degraded)state='degraded';
+  else if(review)state='unknown';
+  return {state,items,total:items.length,running,down,degraded,review,dockerCount:dockerItems.length,parentDockerDown};
+}
+function projectStatusInfo(p){
+  const target=targetProjectStatus(p),runtime=projectRuntimeInfo(p);
+  if(!runtime)return {state:target,target,runtime:null,label:statusText[target]||target};
+  const rank={normal:0,unknown:1,degraded:2,down:3};
+  const state=(rank[runtime.state]||0)>(rank[target]||0)?runtime.state:target;
+  let label=statusText[state]||state;
+  if(runtime.state==='down'&&target!=='down')label='서버 장애';
+  else if(runtime.state==='degraded'&&target==='normal')label='서버 주의';
+  else if(runtime.state==='unknown'&&target==='normal')label='서버 확인';
+  return {state,target,runtime,label};
+}
+function projectStatus(p){return projectStatusInfo(p).state;}
 function dateValue(v){const d=new Date(v);return Number.isNaN(+d)?null:d;}
 function since(v){const d=dateValue(v);if(!d)return '-';let s=Math.max(0,Math.floor((Date.now()-d)/1000));if(s<60)return `${s}초 전`;if(s<3600)return `${Math.floor(s/60)}분 전`;if(s<86400)return `${Math.floor(s/3600)}시간 전`;return `${Math.floor(s/86400)}일 전`;}
 function countdown(v){const d=dateValue(v);if(!d)return '-';let s=Math.max(0,Math.ceil((d-Date.now())/1000));if(s<60)return `${s}초`;if(s<3600)return `${Math.floor(s/60)}분 ${s%60}초`;return `${Math.floor(s/3600)}시간 ${Math.floor((s%3600)/60)}분`;}
@@ -123,13 +151,18 @@ function renderServer(){
   const machineState=sum.status==='critical'?'critical':sum.status==='warning'?'warning':'normal';const hero=$('#serverHealthHero');hero.className=`server-health-hero ${machineState}`;$('#serverHealthState').textContent=machineState==='critical'?'즉시 조치 필요':machineState==='warning'?'주의 항목 있음':'서버 정상';$('#serverHealthDetail').textContent=`서비스 ${sum.service_running||0}/${sum.service_total||0} · Docker ${docker.installed?(docker.running?'정상':'DOWN'):'미검출'} · ROOT ${pct(root.used_percent)} · PostgreSQL ${pg.connect_ok?'정상':'확인 필요'}`;
 
   const actions=[];
-  if(docker.installed&&!docker.running)actions.push({state:'critical',title:'격리 Docker runtime DOWN',detail:docker.message||'/home/ggul-docker runtime이 내려가 Docker 프로젝트가 함께 기동되지 못함'});else if(docker.installed&&docker.running&&docker.auto_start_status==='missing')actions.push({state:'warning',title:'격리 Docker 부팅 자동시작 미등록',detail:docker.auto_start_message||'현재 실행 중이지만 다음 재부팅 복구 관리자 확인 필요'});
+  const dockerDownServices=allServices.filter(v=>v.manager==='docker'&&v.status==='down');
+  const affectedDockerProjects=[...new Set(dockerDownServices.map(v=>v.project_id).filter(Boolean))];
+  const dockerServiceIds=new Set(allServices.filter(v=>v.manager==='docker').map(v=>v.id));
+  const failedPgInstances=pgInstances.filter(x=>!x.running||!x.connect_ok);
+  const pgBlockedOnlyByDocker=!!(docker.installed&&!docker.running&&failedPgInstances.length&&failedPgInstances.every(x=>x.service_id&&dockerServiceIds.has(x.service_id)));
+  if(docker.installed&&!docker.running)actions.push({state:'critical',title:'격리 Docker runtime DOWN',detail:`${docker.message||'/home/ggul-docker runtime DOWN'} · 하위 ${dockerDownServices.length}개 서비스 / ${affectedDockerProjects.length}개 프로젝트 영향`});else if(docker.installed&&docker.running&&docker.auto_start_status==='missing')actions.push({state:'warning',title:'격리 Docker 부팅 자동시작 미등록',detail:docker.auto_start_message||'현재 실행 중이지만 다음 재부팅 복구 관리자 확인 필요'});
   if(root.severity==='critical')actions.push({state:'critical',title:'ROOT 파일시스템 위험',detail:`${pct(root.used_percent)} 사용 · ${root.message||'즉시 정리 필요'}`});else if(root.severity==='warning')actions.push({state:'warning',title:'ROOT 파일시스템 주의',detail:`${pct(root.used_percent)} 사용 · 80% 경고구간`});
   if(home.severity==='critical')actions.push({state:'critical',title:'/home 파일시스템 위험',detail:`${pct(home.used_percent)} 사용 · ${home.message||'즉시 확인'}`});else if(home.severity==='warning')actions.push({state:'warning',title:'/home 파일시스템 주의',detail:`${pct(home.used_percent)} 사용`});
-  if(pg.detected&&!pg.connect_ok)actions.push({state:'critical',title:'PostgreSQL 연결 확인 필요',detail:pg.message||'실행 인스턴스 연결 실패'});
-  if(sum.service_down)actions.push({state:'critical',title:`DOWN 서비스 ${sum.service_down}개`,detail:'프로젝트별 프로세스에서 START/RESTART 가능'});
+  if(pg.detected&&!pg.connect_ok&&!pgBlockedOnlyByDocker)actions.push({state:'critical',title:'PostgreSQL 연결 확인 필요',detail:pg.message||'실행 인스턴스 연결 실패'});
+  if(sum.service_down)actions.push({state:'critical',title:`DOWN 서비스 ${sum.service_down}개`,detail:docker.installed&&!docker.running?`격리 Docker 부모 복구가 먼저 필요 · Docker 하위 ${dockerDownServices.length}개는 개별 START/RESTART 잠금`:'프로젝트별 등록 서비스에서 안전한 START/RESTART 가능'});
   if(sum.service_degraded)actions.push({state:'warning',title:`주의 서비스 ${sum.service_degraded}개`,detail:'프로세스는 실행 중이나 health check 이상'});
-  if(sum.autostart_missing)actions.push({state:'warning',title:`자동시작 미등록 ${sum.autostart_missing}개`,detail:'재부팅 복구를 위해 등록 권장'});
+  if(sum.autostart_missing)actions.push({state:'warning',title:`자동시작 미등록 ${sum.autostart_missing}개`,detail:docker.installed&&docker.auto_start_status==='missing'?'격리 Docker 부모 runtime 포함 · 기존 실행계약이 확인되지 않으면 자동생성하지 않음':'재부팅 복구를 위해 등록 권장'});
   if(sum.autostart_review)actions.push({state:'unknown',title:`자동시작 확인 필요 ${sum.autostart_review}개`,detail:'standalone 등 실행계약 확인 필요'});
   if((s.kernel||{}).oom_detected)actions.push({state:'critical',title:'최근 OOM 흔적',detail:'메모리 부족으로 프로세스 종료 흔적 발견'});if((s.kernel||{}).io_error_detected)actions.push({state:'critical',title:'최근 I/O 오류 흔적',detail:'디스크/파일시스템 오류 로그 확인'});if((s.kernel||{}).hardware_error_detected)actions.push({state:'warning',title:'MCE/EDAC 흔적',detail:'하드웨어 오류 로그 확인'});
   for(const l of (s.logs||[]).filter(x=>x.growth_state!=='normal').slice(0,3))actions.push({state:l.growth_state,title:'로그 비정상 증가',detail:`${l.path} · ${bytes(l.size_bytes)} · ${bytes(l.growth_bytes_per_minute)}/분`});
@@ -143,14 +176,15 @@ function renderServer(){
   const logs=s.logs||[],maxLog=Math.max(1,...logs.map(x=>Number(x.size_bytes||0)));$('#serverLogRows').innerHTML=logs.length?logs.slice(0,12).map(l=>{const state=l.growth_state||'normal',width=Math.max(2,Math.min(100,Number(l.size_bytes||0)/maxLog*100));return `<div class="server-log-row ${esc(state)}"><div class="log-name"><span title="${esc(l.path)}">${esc(l.path)}</span><small>${l.growth_bytes_per_minute?`${bytes(l.growth_bytes_per_minute)}/분`:'증가 안정'}</small></div><strong>${bytes(l.size_bytes)}</strong><div class="log-bar ${esc(state)}" style="--meter-pct:${width}%"><i></i></div></div>`}).join(''):'<div class="server-service-empty">표시할 로그가 없습니다.</div>';
   const errs=(s.kernel||{}).recent_errors||[];$('#serverKernelErrors').innerHTML=errs.length?errs.map(x=>`<code>${esc(x)}</code>`).join(''):'<div class="server-service-empty">최근 커널 오류 없음</div>';
 }
-async function refreshServer(force=false){if(!adminToken)return;try{serverSnapshot=await api(force?'/api/server/recheck':'/api/server/snapshot',{method:force?'POST':'GET'});captureServerMetrics(serverSnapshot);serverLastFetched=Date.now();renderServer()}catch(err){$('#serverMeta').textContent=`서버 상태 확인 실패 · ${err.message}`;}}
+async function refreshServer(force=false){if(!adminToken)return;try{serverSnapshot=await api(force?'/api/server/recheck':'/api/server/snapshot',{method:force?'POST':'GET'});captureServerMetrics(serverSnapshot);serverLastFetched=Date.now();render()}catch(err){$('#serverMeta').textContent=`서버 상태 확인 실패 · ${err.message}`;}}
 async function serverServiceAction(id,action){const label=action.toUpperCase();if((action==='stop'||action==='restart')&&!confirm(`${label} 실행할까? 등록된 이 서비스에만 적용된다.`))return;try{await api(`/api/server/services/${encodeURIComponent(id)}/${action}`,{method:'POST'});toast(`${label} 완료`);await refreshServer(true)}catch(err){toast(err.message)}}
 async function showServiceErrors(id,name){const dlg=$('#serviceErrorsDialog');$('#serviceErrorsTitle').textContent=`${name} 최근 오류`;$('#serviceErrorsBody').textContent='확인 중…';dlg.showModal();try{const r=await api(`/api/server/services/${encodeURIComponent(id)}/errors`);$('#serviceErrorsBody').textContent=(r.lines||[]).join('\n')||'최근 오류 로그 없음'}catch(err){$('#serviceErrorsBody').textContent=err.message}}
 
 function summarize(){
-  const states=snapshot.projects.map(projectStatus);
+  const infos=snapshot.projects.map(projectStatusInfo),states=infos.map(x=>x.state);
   const count=k=>states.filter(s=>s===k).length;
   const normal=count('normal'), degraded=count('degraded'), down=count('down'), unknown=count('unknown');
+  const runtimeDownProjects=infos.filter(x=>x.runtime?.state==='down').length;
   $('#projectCount').textContent=snapshot.projects.length;
   const targets=snapshot.projects.flatMap(p=>p.targets||[]);const active=targets.filter(t=>t.enabled&&t.endpoint);
   $('#targetCount').textContent=targets.length;$('#enabledTargetCount').textContent=`${active.length} 활성`;
@@ -162,7 +196,8 @@ function summarize(){
   else if(degraded){overall.textContent=`주의 ${degraded}`;overall.style.color='var(--slow)'}
   else if(normal){overall.textContent='정상';overall.style.color='var(--normal)'}
   else{overall.textContent='미확인';overall.style.color='var(--unknown)'}
-  detail.textContent=`정상 ${normal} · 주의 ${degraded} · 장애 ${down} · 미확인 ${unknown}`;
+  const serverDown=Number(serverSnapshot.summary?.service_down||0),hubDown=(snapshot.hubs||[]).filter(h=>h.mode!=='planned'&&h.status==='down').length,dockerDown=!!(serverSnapshot.docker_runtime?.installed&&!serverSnapshot.docker_runtime?.running);
+  detail.textContent=`정상 ${normal} · 주의 ${degraded} · 장애 ${down} · 미확인 ${unknown}${runtimeDownProjects?` · 서버장애 프로젝트 ${runtimeDownProjects}`:''}${serverDown?` · 서버 DOWN ${serverDown}`:''}${dockerDown?' · Docker 부모 DOWN':''}${hubDown?` · Hub 장애 ${hubDown}`:''}`;
 }
 
 function render(){summarize();renderHubOverview();renderRecommendations();renderServer();
@@ -176,13 +211,14 @@ function render(){summarize();renderHubOverview();renderRecommendations();render
 }
 
 function projectHTML(p){
-  const st=projectStatus(p), targets=(p.targets||[]).filter(t=>t.enabled&&t.endpoint);
+  const info=projectStatusInfo(p),st=info.state,targets=(p.targets||[]).filter(t=>t.enabled&&t.endpoint);
   const last=targets.map(t=>dateValue(t.last_check_at)).filter(Boolean).sort((a,b)=>b-a)[0];
   const next=targets.map(t=>dateValue(t.next_check_at)).filter(Boolean).sort((a,b)=>a-b)[0];
   const front=infraGroup(p,'front'),proxy=infraGroup(p,'proxy'),app=infraGroup(p,'app'),database=infraGroup(p,'database'),tls=infraGroup(p,'tls'),edge=infraGroup(p,'edge');
+  const runtimeLine=info.runtime?` · 서버 ${info.runtime.running}/${info.runtime.total}${info.runtime.parentDockerDown?' · Docker 부모 DOWN':''}`:'';
   return `<article class="project ${expanded.has(p.id)?'open':''}" data-project="${esc(p.id)}">
     <div class="project-main" tabindex="0" role="button" aria-expanded="${expanded.has(p.id)}">
-      <div class="project-identity"><div class="project-title-row"><span class="status-dot ${st}"></span><span class="project-name">${esc(p.name)}</span><span class="project-id">${esc(p.id)}</span>${p.public_url?`<a class="project-link" href="${esc(p.public_url)}" target="_blank" rel="noreferrer" title="바로 열기">↗</a>`:''}</div><p class="project-kind">${esc(p.category)} · ${esc(p.kind||'구성 미확인')}</p></div>
+      <div class="project-identity"><div class="project-title-row"><span class="status-dot ${st}"></span><span class="project-name">${esc(p.name)}</span><span class="project-id">${esc(p.id)}</span>${p.public_url?`<a class="project-link" href="${esc(p.public_url)}" target="_blank" rel="noreferrer" title="바로 열기">↗</a>`:''}</div><p class="project-kind">${esc(p.category)} · ${esc(p.kind||'구성 미확인')}${esc(runtimeLine)}</p></div>
       ${infraCell(front,infraState(p,'front'))}
       ${infraCell(proxy,infraState(p,'proxy'))}
       ${infraCell(app,infraState(p,'app'))}
@@ -190,7 +226,7 @@ function projectHTML(p){
       ${infraCell(tls,infraState(p,'tls'))}
       ${infraCell(edge,infraState(p,'edge'))}
       ${hubCell(p)}
-      <span class="status-pill ${st}">${statusText[st]}</span>
+      <span class="status-pill ${st}">${esc(info.label)}</span>
       <div class="timing"><strong>${last?since(last):'확인 전'}</strong><span>${next?`다음 ${countdown(next)}`:'자동 체크 없음'}</span></div>
       <span class="chev">›</span>
     </div>
@@ -317,7 +353,7 @@ $('#hubForm').addEventListener('submit',async e=>{e.preventDefault();const f=new
 
 $('#serverRecheckBtn').addEventListener('click',async()=>{const b=$('#serverRecheckBtn');b.disabled=true;b.textContent='점검 중';try{await refreshServer(true);toast('서버 전체 재점검 완료')}finally{b.disabled=false;b.textContent='전체 재점검'}});
 $('#serverAbnormalBtn').addEventListener('click',()=>{serverAbnormalOnly=!serverAbnormalOnly;$('#serverAbnormalBtn').classList.toggle('active',serverAbnormalOnly);$('#serverAbnormalBtn').textContent=serverAbnormalOnly?'전체 서비스 보기':'비정상 서비스만';renderServer()});
-$('#serverAutostartBtn').addEventListener('click',async()=>{if(!confirm('확정된 systemd / PM2 / Docker 서비스의 미등록 자동시작만 설정한다. 확인 필요 항목은 건드리지 않는다. 진행할까?'))return;const b=$('#serverAutostartBtn');b.disabled=true;b.textContent='설정 중';try{const r=await api('/api/server/autostart/apply',{method:'POST'});serverSnapshot=r.snapshot||serverSnapshot;renderServer();const x=r.result||{};toast(`자동시작 설정 완료 · 갱신 ${x.updated||0} · 보류 ${x.skipped||0}`)}catch(err){toast(err.message);await refreshServer(true)}finally{b.disabled=false;b.textContent='미등록 자동시작 설정'}});
+$('#serverAutostartBtn').addEventListener('click',async()=>{if(!confirm('확정된 systemd / PM2 / Docker 서비스의 미등록 자동시작만 설정한다. 확인 필요 항목은 건드리지 않는다. 진행할까?'))return;const b=$('#serverAutostartBtn');b.disabled=true;b.textContent='설정 중';try{const r=await api('/api/server/autostart/apply',{method:'POST'});serverSnapshot=r.snapshot||serverSnapshot;render();const x=r.result||{};toast(`자동시작 설정 완료 · 갱신 ${x.updated||0} · 보류 ${x.skipped||0}${(x.blocked||[]).length?' · Docker 부모 실행계약 확인 필요':''}`)}catch(err){toast(err.message);await refreshServer(true)}finally{b.disabled=false;b.textContent='미등록 자동시작 설정'}});
 document.addEventListener('click',e=>{const a=e.target.closest('.service-action');if(a){serverServiceAction(a.dataset.service,a.dataset.action);return}const l=e.target.closest('[data-service-errors]');if(l)showServiceErrors(l.dataset.serviceErrors,l.dataset.serviceName||'서비스')});
 $('#closeServiceErrorsBtn').addEventListener('click',()=>$('#serviceErrorsDialog').close());
 
