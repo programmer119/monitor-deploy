@@ -152,6 +152,9 @@ function renderServer(){
   const machineState=sum.status==='critical'?'critical':sum.status==='warning'?'warning':'normal';const hero=$('#serverHealthHero');hero.className=`server-health-hero ${machineState}`;$('#serverHealthState').textContent=machineState==='critical'?'즉시 조치 필요':machineState==='warning'?'주의 항목 있음':'서버 정상';$('#serverHealthDetail').textContent=`서비스 ${sum.service_running||0}/${sum.service_total||0} · Docker ${docker.installed?(docker.running?'정상':'DOWN'):'미검출'} · ROOT ${pct(root.used_percent)} · PostgreSQL ${pg.connect_ok?'정상':'확인 필요'}`;
 
   const actions=[];
+  const lastOp=s.last_operation||{};
+  if(lastOp.action==='docker-recovery'&&lastOp.status==='failed')actions.push({state:'critical',title:'최근 Docker 자동복구 실패',detail:lastOp.message||'복구 진단 결과 확인 필요'});
+  else if(lastOp.action==='docker-recovery'&&lastOp.status==='running')actions.push({state:'warning',title:'Docker 자동복구 진행 중',detail:lastOp.message||'기존 runtime 검증 중'});
   const dockerDownServices=allServices.filter(v=>v.manager==='docker'&&v.status==='down');
   const affectedDockerProjects=[...new Set(dockerDownServices.map(v=>v.project_id).filter(Boolean))];
   const dockerServiceIds=new Set(allServices.filter(v=>v.manager==='docker').map(v=>v.id));
