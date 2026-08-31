@@ -37,19 +37,19 @@
         <div class="server-command-center">
           <article class="server-health-hero" id="serverHealthHero">
             <div class="server-health-main">
-              <span class="metric-kicker">MACHINE HEALTH</span>
-              <strong id="serverHealthState">확인 중</strong>
+              <span class="metric-kicker">SERVER RUNTIME</span>
+              <strong id="serverHealthState">서버 자체 확인 중</strong>
               <small id="serverHealthDetail">실제 서버 상태를 계산합니다.</small>
             </div>
-            <div class="server-health-counts" aria-label="서비스 상태 집계">
-              <span class="health-count normal"><b id="serverRunningCount">0</b>정상</span>
-              <span class="health-count warning"><b id="serverWarningCount">0</b>주의</span>
-              <span class="health-count critical"><b id="serverDownCount">0</b>장애</span>
-              <span class="health-count unknown"><b id="serverReviewCount">0</b>확인필요</span>
+            <div class="server-health-counts" aria-label="123 서버 내부 런타임 서비스 상태 집계">
+              <span class="health-count normal" id="serverRunningChip"><b id="serverRunningCount">0</b>정상</span>
+              <span class="health-count warning" id="serverWarningChip"><b id="serverWarningCount">0</b>주의</span>
+              <span class="health-count critical" id="serverDownChip"><b id="serverDownCount">0</b>장애</span>
+              <span class="health-count unknown" id="serverReviewChip"><b id="serverReviewCount">0</b>확인필요</span>
             </div>
           </article>
           <div class="server-action-panel">
-            <div class="action-panel-head"><div><span class="metric-kicker">SERVER ACTION</span><strong>서버 조치 필요</strong></div><span id="serverActionCount" class="action-count">0</span></div>
+            <div class="action-panel-head"><div><span class="metric-kicker">SERVER ACTION</span><strong>서버 내부 조치</strong></div><span id="serverActionCount" class="action-count">0</span></div>
             <div id="serverActionRequired" class="server-action-list"></div>
           </div>
         </div>
