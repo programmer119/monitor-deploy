@@ -170,7 +170,7 @@ function renderServer(){
   if(sum.autostart_review)actions.push({state:'unknown',title:`자동시작 확인 필요 ${sum.autostart_review}개`,detail:'standalone 등 실행계약 확인 필요'});
   if((s.kernel||{}).oom_detected)actions.push({state:'critical',title:'최근 OOM 흔적',detail:'메모리 부족으로 프로세스 종료 흔적 발견'});if((s.kernel||{}).io_error_detected)actions.push({state:'critical',title:'최근 I/O 오류 흔적',detail:'디스크/파일시스템 오류 로그 확인'});if((s.kernel||{}).hardware_error_detected)actions.push({state:'warning',title:'MCE/EDAC 흔적',detail:'하드웨어 오류 로그 확인'});
   for(const l of (s.logs||[]).filter(x=>x.growth_state!=='normal').slice(0,3))actions.push({state:l.growth_state,title:'로그 비정상 증가',detail:`${l.path} · ${bytes(l.size_bytes)} · ${bytes(l.growth_bytes_per_minute)}/분`});
-  const actionRank={critical:0,warning:1,unknown:2};const shown=actions.sort((a,b)=>(actionRank[a.state]??9)-(actionRank[b.state]??9)).slice(0,5);$('#serverActionCount').textContent=actions.length;$('#serverActionRequired').innerHTML=shown.length?shown.map(x=>actionCard(x.state,x.title,x.detail)).join(''):'<div class="action-clear"><span>✓</span><div><strong>즉시 조치 항목 없음</strong><small>현재 서버 자원과 등록 서비스가 정상 범위입니다.</small></div></div>';
+  const actionRank={critical:0,warning:1,unknown:2};const shown=actions.sort((a,b)=>(actionRank[a.state]??9)-(actionRank[b.state]??9)).slice(0,5);$('#serverActionCount').textContent=actions.length;$('#serverActionRequired').innerHTML=shown.length?shown.map(x=>actionCard(x.state,x.title,x.detail)).join(''):'<div class="action-clear"><span>✓</span><div><strong>서버 조치 항목 없음</strong><small>123 서버 자원과 런타임 서비스가 정상 범위입니다.</small></div></div>';
   $('#serverAlerts').innerHTML=actions.filter(x=>x.state==='critical').slice(0,4).map(x=>`<span class="server-alert critical">${esc(x.title)} · ${esc(x.detail)}</span>`).join('');
 
   const projectById=new Map((snapshot.projects||[]).map(p=>[p.id,p]));let services=(s.services||[]);if(serverAbnormalOnly)services=services.filter(v=>serviceGroupState([v])!=='normal');
@@ -196,12 +196,12 @@ function summarize(){
   const next=active.map(t=>dateValue(t.next_check_at)).filter(Boolean).sort((a,b)=>a-b)[0];
   $('#lastCheck').textContent=last?since(last):'아직 없음';$('#nextCheck').textContent=`다음 확인 ${next?countdown(next):'-'}`;
   const overall=$('#overallStatus'),detail=$('#overallDetail');
-  if(down){overall.textContent=`장애 ${down}`;overall.style.color='var(--down)'}
-  else if(degraded){overall.textContent=`주의 ${degraded}`;overall.style.color='var(--slow)'}
-  else if(normal){overall.textContent='정상';overall.style.color='var(--normal)'}
-  else{overall.textContent='미확인';overall.style.color='var(--unknown)'}
+  if(down){overall.textContent=`프로젝트 장애 ${down}`;overall.style.color='var(--down)'}
+  else if(degraded){overall.textContent=`프로젝트 주의 ${degraded}`;overall.style.color='var(--slow)'}
+  else if(normal){overall.textContent='프로젝트 정상';overall.style.color='var(--normal)'}
+  else{overall.textContent='프로젝트 미확인';overall.style.color='var(--unknown)'}
   const serverDown=Number(serverSnapshot.summary?.service_down||0),hubDown=(snapshot.hubs||[]).filter(h=>h.mode!=='planned'&&h.status==='down').length,dockerDown=!!(serverSnapshot.docker_runtime?.installed&&!serverSnapshot.docker_runtime?.running);
-  detail.textContent=`정상 ${normal} · 주의 ${degraded} · 장애 ${down} · 미확인 ${unknown}${runtimeDownProjects?` · 서버장애 프로젝트 ${runtimeDownProjects}`:''}${serverDown?` · 서버 DOWN ${serverDown}`:''}${dockerDown?' · Docker 부모 DOWN':''}${hubDown?` · Hub 장애 ${hubDown}`:''}`;
+  detail.textContent=`프로젝트 기준 · 정상 ${normal} · 주의 ${degraded} · 장애 ${down} · 미확인 ${unknown}${runtimeDownProjects?` · 서버장애 프로젝트 ${runtimeDownProjects}`:''}${serverDown?` · 서버 DOWN ${serverDown}`:''}${dockerDown?' · Docker 부모 DOWN':''}${hubDown?` · Hub 장애 ${hubDown}`:''}`;
 }
 
 function render(){summarize();renderHubOverview();renderRecommendations();renderServer();
