@@ -6,7 +6,7 @@
   <title>SuaveForge Monitor</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
-<body>
+<body class="monitor-mode-operations">
   <div class="shell">
     <header class="topbar">
       <div>
@@ -20,15 +20,20 @@
       </div>
     </header>
 
+    <nav class="monitor-tabs" aria-label="관제 화면 전환">
+      <button class="monitor-tab active" id="monitorTabOperations" type="button" aria-selected="true">기존 관제</button>
+      <button class="monitor-tab" id="monitorTabActions" type="button" aria-selected="false">GitHub Actions <span class="monitor-tab-badge" id="actionsTabBadge" hidden>0</span></button>
+    </nav>
+
     <main>
-      <section class="summary-grid" aria-label="전체 상태 요약">
+      <section class="summary-grid view-operations" aria-label="전체 상태 요약">
         <article class="summary-card summary-main"><span class="summary-label">프로젝트 상태</span><strong id="overallStatus">확인 중</strong><small id="overallDetail">-</small></article>
         <article class="summary-card"><span class="summary-label">프로젝트</span><strong id="projectCount">0</strong><small>등록된 전체 자산</small></article>
         <article class="summary-card"><span class="summary-label">체크 항목</span><strong id="targetCount">0</strong><small id="enabledTargetCount">0 활성</small></article>
         <article class="summary-card"><span class="summary-label">최근 확인</span><strong id="lastCheck">-</strong><small id="nextCheck">다음 확인 -</small></article>
       </section>
 
-      <section class="server-overview" aria-label="123 서버 상태">
+      <section class="server-overview view-operations" aria-label="123 서버 상태">
         <div class="section-head server-section-head">
           <div><p class="eyebrow">SERVER MACHINE</p><h2>123 서버 상태</h2><p id="serverMeta" class="section-note">서버 상태 확인 대기</p></div>
           <div class="section-actions"><button class="button" id="serverAbnormalBtn" type="button">비정상 서비스만</button><button class="button" id="serverRecheckBtn" type="button">전체 재점검</button><button class="button primary" id="serverAutostartBtn" type="button">미등록 자동시작 설정</button></div>
@@ -99,7 +104,7 @@
         <details class="server-detail"><summary>스토리지 / 로그 / 최근 커널 오류</summary><div class="server-detail-grid"><div><h3>ROOT 점유 TOP</h3><div id="serverRootTop" class="server-log-rows"></div></div><div><h3>큰 로그 · 증가속도</h3><div id="serverLogRows" class="server-log-rows"></div></div><div><h3>최근 커널 오류</h3><div id="serverKernelErrors" class="server-kernel-errors"></div></div></div></details>
       </section>
 
-      <section class="actions-overview" aria-label="GitHub Actions 관제">
+      <section class="actions-overview view-actions" aria-label="GitHub Actions 관제">
         <div class="section-head actions-section-head">
           <div><p class="eyebrow">GITHUB ACTIONS</p><h2>조직 CI/CD 관제</h2><p id="actionsMeta" class="section-note">suaveforge Actions 상태 확인 대기</p></div>
           <div class="section-actions"><button class="button" id="actionsRecheckBtn" type="button">Actions 재확인</button></div>
@@ -132,7 +137,7 @@
         </div>
       </section>
 
-      <section class="hub-overview" aria-label="공용 허브 상태">
+      <section class="hub-overview view-operations" aria-label="공용 허브 상태">
         <div class="section-head">
           <div><p class="eyebrow">SHARED HUBS</p><h2>허브 연결 상태</h2></div>
           <div class="section-actions"><button class="button" id="checkHubsBtn" type="button">허브 확인</button><button class="button" id="hubSettingsBtn" type="button">허브 설정</button></div>
@@ -140,7 +145,7 @@
         <div id="hubCards" class="hub-cards"></div>
       </section>
 
-      <section class="recommendation-panel" aria-label="추천 등록 프로젝트">
+      <section class="recommendation-panel view-operations" aria-label="추천 등록 프로젝트">
         <div class="section-head">
           <div><p class="eyebrow">DISCOVERY</p><h2>추천 등록</h2><p id="discoveryMeta" class="section-note">새 프로젝트 탐지 대기</p></div>
           <div class="section-actions"><button class="button" id="discoverNowBtn" type="button">새 프로젝트 찾기</button></div>
@@ -148,7 +153,7 @@
         <div id="recommendationList" class="recommendation-list"></div>
       </section>
 
-      <section class="workspace">
+      <section class="workspace view-operations">
         <div class="toolbar">
           <div class="search-wrap"><label for="search">프로젝트 검색</label><input id="search" type="search" placeholder="이름, 도메인, 기술로 검색"></div>
           <div class="toolbar-actions">

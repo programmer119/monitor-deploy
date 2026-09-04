@@ -5,16 +5,16 @@
   "source": "frontend-github-pages",
   "files": {
     "index.html": {
-      "bytes": 21316,
-      "sha256": "e5dac1fde909d1d4f6c10df80d1de590f9f8f9e68c980e3538342e41e66e7d2c"
+      "bytes": 21829,
+      "sha256": "b57b4eb0e0ad175452f8ee33c01fe397544ed7fe4ecc683860c1e58c306f9eb5"
     },
     "app.js": {
-      "bytes": 61253,
-      "sha256": "fc0ada15ee4db8b30619f7479c6e08055413d6559099a43f46c56618a9b88c64"
+      "bytes": 64828,
+      "sha256": "1b879617993ec633758fe46b7273f6b1d3e0792045380073fcebd038f8ed3cd9"
     },
     "styles.css": {
-      "bytes": 41113,
-      "sha256": "52395987dcbb3a2dbfb64fe5c41ff0c0102546545d0e89642d3b9b28ddc73e5f"
+      "bytes": 42241,
+      "sha256": "e28051d1ba84f5c45b2e54a7369130d38960cfe2a7854c106d30bea425c62b22"
     },
     "404.html": {
       "bytes": 7792,

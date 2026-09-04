@@ -7,6 +7,10 @@ let snapshot = {projects:[], history:[], recommendations:[], discovery:{}, hubs:
 let serverSnapshot = {summary:{},cpu:{},memory:{},filesystems:[],postgresql:{},docker_runtime:{},kernel:{},logs:[],root_top:[],services:[]};
 let actionsSnapshot = {org:'suaveforge',target_runner_name:'123-suaveforge-org-01',summary:{},repositories:[],queue:[],recent_failures:[],state:'checking'};
 let actionsLastFetched = 0;
+let actionsStateReady = false;
+let actionsPrevious = null;
+let monitorMode = 'operations';
+const ACTIONS_POLL_MS = 45000;
 let serverLastFetched = 0;
 let serverAbnormalOnly = false;
 const serverMetricHistory={cpu:[],ram:[],root:[],home:[]};
@@ -81,7 +85,8 @@ function renderRecommendations(){
   const urlLabels={verified:'URL 확인됨',protected:'접근제한 확인',suspect:'URL 확인 필요',missing:'URL 미확인'};
   list.innerHTML=recs.length?recs.map(r=>{const us=r.url_status||'missing',ul=urlLabels[us]||'URL 미확인';return `<article class="recommendation-item"><div><strong>${esc(r.name)}</strong><span>${esc(r.repository)}</span><div class="recommendation-url-line"><small title="${esc(r.public_url||'')}">${r.public_url?esc(r.public_url):'운영 URL을 찾지 못했습니다.'}</small><em class="url-check ${esc(us)}">${esc(ul)}</em></div>${r.url_message?`<p class="recommendation-url-message">${esc(r.url_message)}</p>`:''}</div><button class="button primary small register-recommendation" data-recommendation="${esc(r.id)}">${us==='verified'||us==='protected'?'등록':'URL 확인 후 등록'}</button></article>`}).join(''):`<div class="recommendation-empty">현재 새로 추천할 프로젝트가 없습니다.</div>`;
 }
-function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2200);}
+let toastTimer=0;
+function toast(msg,type='default',duration=2200){const el=$('#toast');if(!el)return;clearTimeout(toastTimer);el.textContent=msg;el.classList.remove('queued','success','failure');if(type!=='default')el.classList.add(type);el.classList.add('show');toastTimer=setTimeout(()=>{el.classList.remove('show','queued','success','failure')},duration);}
 
 function showLogin(message=''){
   const dlg=$('#loginDialog');
@@ -110,12 +115,45 @@ function bytes(v){v=Number(v||0);if(!v)return '0 B';const u=['B','KB','MB','GB',
 function actionDuration(seconds){seconds=Math.max(0,Number(seconds||0));if(seconds<60)return `${Math.floor(seconds)}초`;if(seconds<3600)return `${Math.floor(seconds/60)}분 ${Math.floor(seconds%60)}초`;return `${Math.floor(seconds/3600)}시간 ${Math.floor((seconds%3600)/60)}분`;}
 function actionStateLabel(s){return ({queued:'QUEUED',in_progress:'RUNNING',success:'SUCCESS',failure:'FAILURE',unknown:'미확인'})[s]||String(s||'미확인').toUpperCase();}
 function actionSeverityClass(s){if(['failure','error','offline'].includes(s))return 'failure';if(['queued','warning'].includes(s))return 'queued';if(['in_progress','busy'].includes(s))return 'in_progress';if(['success','normal','idle'].includes(s))return 'success';return 'unknown';}
+function setMonitorMode(mode){
+  monitorMode=mode==='actions'?'actions':'operations';
+  document.body.classList.toggle('monitor-mode-operations',monitorMode==='operations');
+  document.body.classList.toggle('monitor-mode-actions',monitorMode==='actions');
+  const ops=$('#monitorTabOperations'),actions=$('#monitorTabActions');
+  if(ops){ops.classList.toggle('active',monitorMode==='operations');ops.setAttribute('aria-selected',monitorMode==='operations'?'true':'false')}
+  if(actions){actions.classList.toggle('active',monitorMode==='actions');actions.setAttribute('aria-selected',monitorMode==='actions'?'true':'false')}
+  if(monitorMode==='actions')refreshActions(false);
+}
+function notifyActionTransitions(next){
+  if(!actionsStateReady||!actionsPrevious){actionsStateReady=true;actionsPrevious=next;return;}
+  const prev=actionsPrevious||{},notices=[];
+  const prevQueue=new Set((prev.queue||[]).map(q=>String(q.job_id||`${q.repository}:${q.run_id}:${q.name}`)));
+  const added=(next.queue||[]).filter(q=>!prevQueue.has(String(q.job_id||`${q.repository}:${q.run_id}:${q.name}`)));
+  if(added.length===1){const q=added[0];notices.push({type:'queued',text:`Actions 큐 진입 · ${q.repository} · ${q.name}`})}
+  else if(added.length>1){notices.push({type:'queued',text:`Actions 큐 ${added.length}건 진입 · ${added.slice(0,2).map(q=>q.repository).join(', ')}${added.length>2?' 외':''}`})}
+  const prevRepos=new Map((prev.repositories||[]).map(r=>[r.full_name,r]));
+  const completed=[];
+  for(const cur of (next.repositories||[])){
+    if(!['success','failure'].includes(cur.status))continue;
+    const old=prevRepos.get(cur.full_name);if(!old)continue;
+    const sameRun=Number(cur.run_id||0)===Number(old.run_id||0);
+    const wasActive=['queued','in_progress'].includes(old.status);
+    const prevGenerated=dateValue(prev.generated_at),created=dateValue(cur.created_at);
+    const completedBetweenPolls=!sameRun&&created&&prevGenerated&&created>prevGenerated;
+    if((sameRun&&wasActive)||completedBetweenPolls)completed.push(cur);
+  }
+  if(completed.length===1){const r=completed[0];notices.push({type:r.status==='failure'?'failure':'success',text:`Actions 완료 · ${r.full_name} · ${actionStateLabel(r.status)}`})}
+  else if(completed.length>1){const failures=completed.filter(r=>r.status==='failure').length;notices.push({type:failures?'failure':'success',text:`Actions ${completed.length}건 완료${failures?` · 실패 ${failures}`:''}`})}
+  actionsPrevious=next;
+  if(notices.length){const type=notices.some(n=>n.type==='failure')?'failure':notices.some(n=>n.type==='queued')?'queued':'success';toast(notices.map(n=>n.text).join(' / '),type,5000);}
+}
 function renderActions(){
   const a=actionsSnapshot||{},sum=a.summary||{},runner=a.target_runner||null,queue=a.queue||[],failures=a.recent_failures||[],repos=a.repositories||[];
   const meta=$('#actionsMeta');if(!meta)return;
   const rate=a.rate_remaining?` · API 잔여 ${a.rate_remaining}`:'';
   meta.textContent=a.generated_at?`${a.org||'suaveforge'} · ${since(a.generated_at)} 갱신${rate}${a.message?` · ${a.message}`:''}`:`${a.org||'suaveforge'} Actions 상태 확인 대기${a.message?` · ${a.message}`:''}`;
   $('#actionsRepoCount').textContent=sum.repositories||0;$('#actionsQueuedCount').textContent=sum.queued||0;$('#actionsRunningCount').textContent=sum.in_progress||0;$('#actionsSuccessCount').textContent=sum.success||0;$('#actionsFailureCount').textContent=sum.failure||0;
+  const tabBadge=$('#actionsTabBadge'),tabActive=Number(sum.queued||0)+Number(sum.in_progress||0);if(tabBadge){tabBadge.textContent=String(tabActive);tabBadge.hidden=tabActive===0;}
   $('#actionsRunnerName').textContent=a.target_runner_name||'123-suaveforge-org-01';
   const runnerState=$('#actionsRunnerState'),runnerPanel=$('#actionsRunnerPanel'),current=$('#actionsRunnerCurrent');
   let rst='unknown',rlabel='미검출';
@@ -131,7 +169,7 @@ function renderActions(){
   $('#actionsFailureList').innerHTML=failures.length?failures.map(f=>`<div class="actions-list-item failure-item"><div><strong>${esc(f.repository)} · ${esc(f.failed_job||f.workflow||'workflow')}</strong><small>${f.completed_at?since(f.completed_at):'-'} · ${esc(f.conclusion||'failure')}</small><small class="cause">${esc(f.cause||'실패 원인 확인 중')}</small>${f.run_url?`<small><a href="${esc(f.run_url)}" target="_blank" rel="noreferrer">GitHub run 열기 ↗</a></small>`:''}</div></div>`).join(''):'<div class="actions-empty">최근 실패 없음</div>';
   $('#actionsRepoRows').innerHTML=repos.length?repos.map(r=>`<div class="actions-repo-row"><span><strong>${esc(r.full_name)}</strong><small>${esc(r.visibility||'')} · #${esc(r.run_number||'-')}</small></span><span><strong>${esc(r.workflow||'workflow')}</strong><small>${esc(r.branch||'-')} · ${esc(r.event||'-')}</small></span><span><em class="actions-run-pill ${esc(r.status||'unknown')}">${actionStateLabel(r.status)}</em></span><span><strong>${r.status==='queued'?`대기 ${actionDuration(r.queue_seconds)}`:`실행 ${actionDuration(r.duration_seconds)}`}</strong><small>${esc(r.conclusion||'')}</small></span><span><strong>${r.updated_at?since(r.updated_at):'-'}</strong>${r.run_url?`<small><a href="${esc(r.run_url)}" target="_blank" rel="noreferrer">run ↗</a></small>`:''}</span></div>`).join(''):'<div class="actions-empty">최근 Actions run이 있는 repo가 없습니다.</div>';
 }
-async function refreshActions(force=false){if(!adminToken)return;try{actionsSnapshot=await api(force?'/api/actions/recheck':'/api/actions/snapshot',{method:force?'POST':'GET'});actionsLastFetched=Date.now();renderActions()}catch(err){const meta=$('#actionsMeta');if(meta)meta.textContent=`Actions 상태 확인 실패 · ${err.message}`;}}
+async function refreshActions(force=false){if(!adminToken)return;try{const next=await api(force?'/api/actions/recheck':'/api/actions/snapshot',{method:force?'POST':'GET'});notifyActionTransitions(next);actionsSnapshot=next;actionsLastFetched=Date.now();renderActions()}catch(err){const meta=$('#actionsMeta');if(meta)meta.textContent=`Actions 상태 확인 실패 · ${err.message}`;}}
 function pct(v){return `${Number(v||0).toFixed(1)}%`;}
 function uptime(v){let s=Math.max(0,Number(v||0));if(!s)return '-';const d=Math.floor(s/86400);s%=86400;const h=Math.floor(s/3600);s%=3600;const m=Math.floor(s/60);if(d)return `${d}일 ${h}시간`;if(h)return `${h}시간 ${m}분`;return `${m}분`;}
 function serverFs(path){return (serverSnapshot.filesystems||[]).find(x=>x.path===path)||{};}
@@ -382,6 +420,8 @@ $('#recommendationUrlForm').addEventListener('submit',async e=>{e.preventDefault
 
 $('#hubForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget),btn=e.currentTarget.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='저장 중';try{for(const h of (snapshot.hubs||[])){await api(`/api/hubs/${h.id}`,{method:'PUT',body:JSON.stringify({name:h.name,mode:f.get(`hub_mode_${h.id}`),public_url:f.get(`hub_public_${h.id}`)||'',health_url:f.get(`hub_health_${h.id}`)||'',sync_url:f.get(`hub_sync_${h.id}`)||''})})}await api('/api/hubs/check',{method:'POST'});$('#hubDialog').close();await refresh();toast('허브 설정과 상태를 갱신했습니다.')}catch(err){toast(err.message)}finally{btn.disabled=false;btn.textContent='저장 후 확인'}});
 
+$('#monitorTabOperations').addEventListener('click',()=>setMonitorMode('operations'));
+$('#monitorTabActions').addEventListener('click',()=>setMonitorMode('actions'));
 $('#actionsRecheckBtn').addEventListener('click',async()=>{const b=$('#actionsRecheckBtn');b.disabled=true;b.textContent='확인 중';try{await refreshActions(true);toast('GitHub Actions 상태를 갱신했습니다.')}finally{b.disabled=false;b.textContent='Actions 재확인'}});
 $('#serverRecheckBtn').addEventListener('click',async()=>{const b=$('#serverRecheckBtn');b.disabled=true;b.textContent='점검 중';try{await refreshServer(true);toast('서버 전체 재점검 완료')}finally{b.disabled=false;b.textContent='전체 재점검'}});
 $('#serverAbnormalBtn').addEventListener('click',()=>{serverAbnormalOnly=!serverAbnormalOnly;$('#serverAbnormalBtn').classList.toggle('active',serverAbnormalOnly);$('#serverAbnormalBtn').textContent=serverAbnormalOnly?'전체 서비스 보기':'비정상 서비스만';renderServer()});
@@ -394,7 +434,9 @@ $('#changeKeyBtn').addEventListener('click',()=>{adminToken='';localStorage.remo
 setInterval(()=>{if(lastFetched)$('#refreshAge').textContent=`${Math.floor((Date.now()-lastFetched)/1000)}초 전`;if(snapshot.projects.length){summarize();$$('.project').forEach(el=>{});}},1000);
 setInterval(refresh,5000);
 setInterval(()=>refreshServer(false),15000);
-setInterval(()=>refreshActions(false),15000);
+setInterval(()=>{if(!document.hidden)refreshActions(false)},ACTIONS_POLL_MS);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshActions(false)});
+setMonitorMode('operations');
 refresh();
 refreshServer(true);
 refreshActions(true);
