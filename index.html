@@ -99,6 +99,39 @@
         <details class="server-detail"><summary>스토리지 / 로그 / 최근 커널 오류</summary><div class="server-detail-grid"><div><h3>ROOT 점유 TOP</h3><div id="serverRootTop" class="server-log-rows"></div></div><div><h3>큰 로그 · 증가속도</h3><div id="serverLogRows" class="server-log-rows"></div></div><div><h3>최근 커널 오류</h3><div id="serverKernelErrors" class="server-kernel-errors"></div></div></div></details>
       </section>
 
+      <section class="actions-overview" aria-label="GitHub Actions 관제">
+        <div class="section-head actions-section-head">
+          <div><p class="eyebrow">GITHUB ACTIONS</p><h2>조직 CI/CD 관제</h2><p id="actionsMeta" class="section-note">suaveforge Actions 상태 확인 대기</p></div>
+          <div class="section-actions"><button class="button" id="actionsRecheckBtn" type="button">Actions 재확인</button></div>
+        </div>
+        <div class="actions-summary-strip" aria-label="GitHub Actions 상태 집계">
+          <span><small>REPOS</small><b id="actionsRepoCount">0</b></span>
+          <span class="queued"><small>QUEUED</small><b id="actionsQueuedCount">0</b></span>
+          <span class="running"><small>RUNNING</small><b id="actionsRunningCount">0</b></span>
+          <span class="success"><small>SUCCESS</small><b id="actionsSuccessCount">0</b></span>
+          <span class="failure"><small>FAILURE</small><b id="actionsFailureCount">0</b></span>
+        </div>
+        <div class="actions-command-grid">
+          <article class="actions-panel runner-panel" id="actionsRunnerPanel">
+            <div class="actions-panel-head"><span class="metric-kicker">SELF-HOSTED RUNNER</span><em id="actionsRunnerState" class="actions-state unknown">확인 중</em></div>
+            <strong class="actions-runner-name" id="actionsRunnerName">123-suaveforge-org-01</strong>
+            <div id="actionsRunnerCurrent" class="actions-panel-body muted">runner 상태 확인 대기</div>
+          </article>
+          <article class="actions-panel queue-panel">
+            <div class="actions-panel-head"><span class="metric-kicker">QUEUE</span><em id="actionsQueueState" class="actions-state unknown">0</em></div>
+            <div id="actionsQueueList" class="actions-list"><div class="actions-empty">queued job 없음</div></div>
+          </article>
+          <article class="actions-panel failure-panel">
+            <div class="actions-panel-head"><span class="metric-kicker">RECENT FAILURES</span><em id="actionsFailureState" class="actions-state unknown">0</em></div>
+            <div id="actionsFailureList" class="actions-list"><div class="actions-empty">최근 실패 없음</div></div>
+          </article>
+        </div>
+        <div class="actions-repo-board">
+          <div class="actions-repo-head"><span>Repository</span><span>Workflow</span><span>상태</span><span>대기/실행</span><span>최근 갱신</span></div>
+          <div id="actionsRepoRows" class="actions-repo-rows"><div class="actions-empty">Actions repo 확인 대기</div></div>
+        </div>
+      </section>
+
       <section class="hub-overview" aria-label="공용 허브 상태">
         <div class="section-head">
           <div><p class="eyebrow">SHARED HUBS</p><h2>허브 연결 상태</h2></div>

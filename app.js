@@ -5,6 +5,8 @@ const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 let snapshot = {projects:[], history:[], recommendations:[], discovery:{}, hubs:[], updated:null};
 let serverSnapshot = {summary:{},cpu:{},memory:{},filesystems:[],postgresql:{},docker_runtime:{},kernel:{},logs:[],root_top:[],services:[]};
+let actionsSnapshot = {org:'suaveforge',target_runner_name:'123-suaveforge-org-01',summary:{},repositories:[],queue:[],recent_failures:[],state:'checking'};
+let actionsLastFetched = 0;
 let serverLastFetched = 0;
 let serverAbnormalOnly = false;
 const serverMetricHistory={cpu:[],ram:[],root:[],home:[]};
@@ -105,6 +107,31 @@ async function refresh(){
 }
 
 function bytes(v){v=Number(v||0);if(!v)return '0 B';const u=['B','KB','MB','GB','TB'];let i=0;while(v>=1024&&i<u.length-1){v/=1024;i++}return `${v>=10||i===0?v.toFixed(0):v.toFixed(1)} ${u[i]}`;}
+function actionDuration(seconds){seconds=Math.max(0,Number(seconds||0));if(seconds<60)return `${Math.floor(seconds)}초`;if(seconds<3600)return `${Math.floor(seconds/60)}분 ${Math.floor(seconds%60)}초`;return `${Math.floor(seconds/3600)}시간 ${Math.floor((seconds%3600)/60)}분`;}
+function actionStateLabel(s){return ({queued:'QUEUED',in_progress:'RUNNING',success:'SUCCESS',failure:'FAILURE',unknown:'미확인'})[s]||String(s||'미확인').toUpperCase();}
+function actionSeverityClass(s){if(['failure','error','offline'].includes(s))return 'failure';if(['queued','warning'].includes(s))return 'queued';if(['in_progress','busy'].includes(s))return 'in_progress';if(['success','normal','idle'].includes(s))return 'success';return 'unknown';}
+function renderActions(){
+  const a=actionsSnapshot||{},sum=a.summary||{},runner=a.target_runner||null,queue=a.queue||[],failures=a.recent_failures||[],repos=a.repositories||[];
+  const meta=$('#actionsMeta');if(!meta)return;
+  const rate=a.rate_remaining?` · API 잔여 ${a.rate_remaining}`:'';
+  meta.textContent=a.generated_at?`${a.org||'suaveforge'} · ${since(a.generated_at)} 갱신${rate}${a.message?` · ${a.message}`:''}`:`${a.org||'suaveforge'} Actions 상태 확인 대기${a.message?` · ${a.message}`:''}`;
+  $('#actionsRepoCount').textContent=sum.repositories||0;$('#actionsQueuedCount').textContent=sum.queued||0;$('#actionsRunningCount').textContent=sum.in_progress||0;$('#actionsSuccessCount').textContent=sum.success||0;$('#actionsFailureCount').textContent=sum.failure||0;
+  $('#actionsRunnerName').textContent=a.target_runner_name||'123-suaveforge-org-01';
+  const runnerState=$('#actionsRunnerState'),runnerPanel=$('#actionsRunnerPanel'),current=$('#actionsRunnerCurrent');
+  let rst='unknown',rlabel='미검출';
+  if(runner){if(String(runner.status).toLowerCase()!=='online'){rst='offline';rlabel='OFFLINE'}else if(runner.busy){rst='busy';rlabel='BUSY'}else{rst='idle';rlabel='IDLE'}}
+  runnerState.className=`actions-state ${actionSeverityClass(rst)}`;runnerState.textContent=rlabel;runnerPanel.classList.toggle('critical',rst==='offline');
+  if(!runner){current.className='actions-panel-body muted';current.textContent=a.token_state==='permission_error'?'runner 조회 권한 확인 필요':'조직 runner 목록에서 대상 runner를 찾지 못했습니다.'}
+  else if(runner.current_job){current.className='actions-panel-body';current.innerHTML=`<div class="runner-current"><strong>${esc(runner.current_repository)} · ${esc(runner.current_job)}</strong><small>${esc(runner.current_workflow||'workflow')} · 실행 ${actionDuration(runner.current_seconds)}</small><div class="runner-current-meta"><span>${esc(runner.os||'-')}</span><span>RUN #${esc(runner.current_run_id||'-')}</span><span>JOB ${esc(runner.current_job_id||'-')}</span></div></div>`}
+  else{current.className='actions-panel-body muted';current.innerHTML=`${runner.busy?'BUSY · 현재 job 매핑 재확인 중':'현재 점유 작업 없음'}<div class="runner-current-meta"><span>${esc(runner.os||'-')}</span><span>${esc((runner.labels||[]).join(' · ')||'labels 없음')}</span></div>`}
+  const targetQueue=queue.filter(q=>q.targets_target_runner),otherQueue=queue.filter(q=>!q.targets_target_runner);
+  const ordered=[...targetQueue,...otherQueue];$('#actionsQueueState').className=`actions-state ${ordered.some(q=>q.long_queued)?'queued':'unknown'}`;$('#actionsQueueState').textContent=`${targetQueue.length} / 전체 ${queue.length}`;
+  $('#actionsQueueList').innerHTML=ordered.length?ordered.map(q=>{const sev=Number(q.wait_seconds||0)>=1200?'critical':q.long_queued?'long':'';const target=q.targets_target_runner?'123 runner':'다른 runner';return `<div class="actions-list-item ${sev}"><span class="queue-index">${q.target_queue_position||q.queue_position||'-'}</span><div><strong>${esc(q.repository)} · ${esc(q.name)}</strong><small>${esc(q.workflow||'workflow')} · ${target} · 대기 ${actionDuration(q.wait_seconds)}</small><small class="cause">${esc(q.reason||'원인 확인 중')}</small></div></div>`}).join(''):'<div class="actions-empty">queued job 없음</div>';
+  $('#actionsFailureState').className=`actions-state ${failures.length?'failure':'success'}`;$('#actionsFailureState').textContent=String(failures.length);
+  $('#actionsFailureList').innerHTML=failures.length?failures.map(f=>`<div class="actions-list-item failure-item"><div><strong>${esc(f.repository)} · ${esc(f.failed_job||f.workflow||'workflow')}</strong><small>${f.completed_at?since(f.completed_at):'-'} · ${esc(f.conclusion||'failure')}</small><small class="cause">${esc(f.cause||'실패 원인 확인 중')}</small>${f.run_url?`<small><a href="${esc(f.run_url)}" target="_blank" rel="noreferrer">GitHub run 열기 ↗</a></small>`:''}</div></div>`).join(''):'<div class="actions-empty">최근 실패 없음</div>';
+  $('#actionsRepoRows').innerHTML=repos.length?repos.map(r=>`<div class="actions-repo-row"><span><strong>${esc(r.full_name)}</strong><small>${esc(r.visibility||'')} · #${esc(r.run_number||'-')}</small></span><span><strong>${esc(r.workflow||'workflow')}</strong><small>${esc(r.branch||'-')} · ${esc(r.event||'-')}</small></span><span><em class="actions-run-pill ${esc(r.status||'unknown')}">${actionStateLabel(r.status)}</em></span><span><strong>${r.status==='queued'?`대기 ${actionDuration(r.queue_seconds)}`:`실행 ${actionDuration(r.duration_seconds)}`}</strong><small>${esc(r.conclusion||'')}</small></span><span><strong>${r.updated_at?since(r.updated_at):'-'}</strong>${r.run_url?`<small><a href="${esc(r.run_url)}" target="_blank" rel="noreferrer">run ↗</a></small>`:''}</span></div>`).join(''):'<div class="actions-empty">최근 Actions run이 있는 repo가 없습니다.</div>';
+}
+async function refreshActions(force=false){if(!adminToken)return;try{actionsSnapshot=await api(force?'/api/actions/recheck':'/api/actions/snapshot',{method:force?'POST':'GET'});actionsLastFetched=Date.now();renderActions()}catch(err){const meta=$('#actionsMeta');if(meta)meta.textContent=`Actions 상태 확인 실패 · ${err.message}`;}}
 function pct(v){return `${Number(v||0).toFixed(1)}%`;}
 function uptime(v){let s=Math.max(0,Number(v||0));if(!s)return '-';const d=Math.floor(s/86400);s%=86400;const h=Math.floor(s/3600);s%=3600;const m=Math.floor(s/60);if(d)return `${d}일 ${h}시간`;if(h)return `${h}시간 ${m}분`;return `${m}분`;}
 function serverFs(path){return (serverSnapshot.filesystems||[]).find(x=>x.path===path)||{};}
@@ -204,7 +231,7 @@ function summarize(){
   detail.textContent=`프로젝트 기준 · 정상 ${normal} · 주의 ${degraded} · 장애 ${down} · 미확인 ${unknown}${runtimeDownProjects?` · 서버장애 프로젝트 ${runtimeDownProjects}`:''}${serverDown?` · 서버 DOWN ${serverDown}`:''}${dockerDown?' · Docker 부모 DOWN':''}${hubDown?` · Hub 장애 ${hubDown}`:''}`;
 }
 
-function render(){summarize();renderHubOverview();renderRecommendations();renderServer();
+function render(){summarize();renderHubOverview();renderRecommendations();renderServer();renderActions();
   const q=$('#search').value.trim().toLowerCase();
   const list=snapshot.projects.filter(p=>{
     const st=projectStatus(p);if(filter!=='all'&&st!==filter)return false;
@@ -355,6 +382,7 @@ $('#recommendationUrlForm').addEventListener('submit',async e=>{e.preventDefault
 
 $('#hubForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget),btn=e.currentTarget.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='저장 중';try{for(const h of (snapshot.hubs||[])){await api(`/api/hubs/${h.id}`,{method:'PUT',body:JSON.stringify({name:h.name,mode:f.get(`hub_mode_${h.id}`),public_url:f.get(`hub_public_${h.id}`)||'',health_url:f.get(`hub_health_${h.id}`)||'',sync_url:f.get(`hub_sync_${h.id}`)||''})})}await api('/api/hubs/check',{method:'POST'});$('#hubDialog').close();await refresh();toast('허브 설정과 상태를 갱신했습니다.')}catch(err){toast(err.message)}finally{btn.disabled=false;btn.textContent='저장 후 확인'}});
 
+$('#actionsRecheckBtn').addEventListener('click',async()=>{const b=$('#actionsRecheckBtn');b.disabled=true;b.textContent='확인 중';try{await refreshActions(true);toast('GitHub Actions 상태를 갱신했습니다.')}finally{b.disabled=false;b.textContent='Actions 재확인'}});
 $('#serverRecheckBtn').addEventListener('click',async()=>{const b=$('#serverRecheckBtn');b.disabled=true;b.textContent='점검 중';try{await refreshServer(true);toast('서버 전체 재점검 완료')}finally{b.disabled=false;b.textContent='전체 재점검'}});
 $('#serverAbnormalBtn').addEventListener('click',()=>{serverAbnormalOnly=!serverAbnormalOnly;$('#serverAbnormalBtn').classList.toggle('active',serverAbnormalOnly);$('#serverAbnormalBtn').textContent=serverAbnormalOnly?'전체 서비스 보기':'비정상 서비스만';renderServer()});
 $('#serverAutostartBtn').addEventListener('click',async()=>{const d=serverSnapshot.docker_runtime||{};const recover=d.installed&&!d.running&&d.auto_start_status==='missing';const msg=recover?'격리 Docker 부모가 내려가 있다. 기존 /home/ggul-docker data-root·socket·persisted container metadata를 먼저 transient 기동으로 검증하고, 정확히 일치할 때만 동일 명령을 systemd에 영구 등록한다. 검증 실패 시 영구 등록하지 않는다. 진행할까?':'확정된 systemd / PM2 / Docker 서비스의 미등록 자동시작만 설정한다. 확인 필요 항목은 건드리지 않는다. 진행할까?';if(!confirm(msg))return;const b=$('#serverAutostartBtn');b.disabled=true;b.textContent=recover?'Docker 검증·복구 중':'설정 중';try{const r=await api('/api/server/autostart/apply',{method:'POST'});serverSnapshot=r.snapshot||serverSnapshot;render();const x=r.result||{};const notes=x.notes||[];const blocked=x.blocked||[];const recovered=notes.find(v=>String(v).includes('복구 완료'));toast(recovered||`자동시작 설정 완료 · 갱신 ${x.updated||0} · 보류 ${x.skipped||0}${blocked.length?' · 확인 필요 있음':''}`)}catch(err){toast(err.message);await refreshServer(true)}finally{b.disabled=false;render()}});
@@ -366,5 +394,7 @@ $('#changeKeyBtn').addEventListener('click',()=>{adminToken='';localStorage.remo
 setInterval(()=>{if(lastFetched)$('#refreshAge').textContent=`${Math.floor((Date.now()-lastFetched)/1000)}초 전`;if(snapshot.projects.length){summarize();$$('.project').forEach(el=>{});}},1000);
 setInterval(refresh,5000);
 setInterval(()=>refreshServer(false),15000);
+setInterval(()=>refreshActions(false),15000);
 refresh();
 refreshServer(true);
+refreshActions(true);
